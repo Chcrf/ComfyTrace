@@ -1,0 +1,36 @@
+{
+  "workflow_id": "WF-001",
+  "completeness": "COMPLETE",
+  "prompt_format": "API_GRAPH",
+  "encoding_detected": "UTF-8",
+  "source_process_id": 13484,
+  "virtual_address": "0x00000213B8E20000",
+  "physical_offsets": [
+    "0x0000000266C10000"
+  ],
+  "canonical_json_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "execution_parameters": {
+    "prompt_id": "d6c4a8f1-34e2-4f32-b7d1-08f23491ba02",
+    "seed": 167346845307033,
+    "sampler_name": "euler_ancestral",
+    "scheduler": "normal",
+    "steps": 20,
+    "cfg_scale": 7.0,
+    "model_name": "v1-5-pruned-emaonly.safetensors",
+    "positive_prompt": "cinematic portrait of a golden retriever puppy, 8k",
+    "negative_prompt": "blurry, low quality, distorted"
+  },
+  "dependencies": {
+    "node_classes": [
+      "CheckpointLoaderSimple",
+      "CLIPTextEncode",
+      "KSampler",
+      "VAEDecode",
+      "SaveImage"
+    ],
+    "model_assets": [
+      "v1-5-pruned-emaonly.safetensors"
+    ]
+  },
+  "raw_file_path": "exports/raw/WF-001.json"
+}

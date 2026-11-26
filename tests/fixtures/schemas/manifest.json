@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0.0",
+  "case_metadata": {
+    "case_id": "CASE-2026-0042",
+    "investigator": "Investigator Name",
+    "execution_timestamp_utc": "2026-11-03T12:00:00Z",
+    "comfytrace_version": "1.0.0",
+    "command_line": "comfytrace extract --memory memdump.raw --symbols-dir /symbols --outdir ./case01",
+    "memory_image": {
+      "path": "memdump.raw",
+      "size_bytes": 17179869184,
+      "sha256": "fb2bb0ef7be27633e62a1f0d0583d61a74d3c8484fc1ec3748a3db992b557ebf"
+    },
+    "symbol_resolution": {
+      "mode": "OFFLINE_CACHE",
+      "symbols_dir": "/symbols",
+      "remote_download_permitted": false,
+      "status": "SUCCESS"
+    },
+    "exit_code": 0
+  },
+  "process_context": [
+    {
+      "pid": 13484,
+      "ppid": 19556,
+      "process_name": "python.exe",
+      "command_line": "C:\\ComfyUI\\python_embeded\\python.exe main.py --listen",
+      "role": "WORKER_CHILD",
+      "threads": 26,
+      "dtb": "0x19b6000",
+      "vad_count": 412
+    }
+  ],
+  "findings": {
+    "tier_summary": {
+      "E1": 0,
+      "E2": 1,
+      "E3": 0,
+      "E4": 0,
+      "E5": 0,
+      "E6": 0,
+      "untiered_orphan_images": 0,
+      "untiered_ambiguous_images": 0,
+      "untiered_supporting_artifacts": 0
+    },
+    "findings": [
+      {
+        "finding_id": "FIND-001",
+        "tier": "E2",
+        "artifact_ids": [
+          "CARVE-PNG-001",
+          "WF-001"
+        ],
+        "link_ids": [
+          "LINK-001"
+        ],
+        "rationale": "Intact PNG linked to complete API prompt graph via matching prompt chunk canonical JSON hash."
+      }
+    ],
+    "artifacts": [],
+    "workflows": [],
+    "correlation_links": [
+      {
+        "link_id": "LINK-001",
+        "workflow_id": "WF-001",
+        "artifact_id": "CARVE-PNG-001",
+        "link_class": "STRICT",
+        "matched_keys": [
+          "CANONICAL_PROMPT_HASH",
+          "PROMPT_ID"
+        ],
+        "confidence_notes": "Exact canonical JSON SHA-256 match between carved PNG tEXt prompt chunk and recovered prompt graph."
+      }
+    ],
+    "supporting_artifacts": []
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "handoff_id": "REGEN-001",
+  "workflow_id": "WF-001",
+  "target_manifest_sha256": "fb2bb0ef7be27633e62a1f0d0583d61a74d3c8484fc1ec3748a3db992b557ebf",
+  "status": "COMPLETED",
+  "security_audit": {
+    "allowed_custom_nodes": [],
+    "model_format": "SAFETENSORS",
+    "pickle_models_permitted": false
+  },
+  "preflight_check": {
+    "status": "PASSED",
+    "runner_object_info_verified": true,
+    "model_match_level": "HASH_VERIFIED",
+    "missing_node_classes": [],
+    "missing_model_assets": []
+  },
+  "runner_environment": {
+    "comfyui_version": "0.35.0",
+    "python_version": "3.12.2",
+    "pytorch_version": "2.8.0+cu128",
+    "cuda_driver_version": "570.86.16",
+    "gpu_hardware": "NVIDIA GeForce RTX 3070 Laptop GPU"
+  },
+  "evaluation": {
+    "target_artifact_id": "CARVE-PNG-001",
+    "evaluation_mode": "INTACT_NATIVE_RESOLUTION",
+    "exact_pixel_match": false,
+    "ssim_score": 0.9842,
+    "phash_hamming_distance": 2,
+    "evaluated_tier": "E1",
+    "evaluation_subtier": "PERCEPTUAL_MATCH",
+    "promoted_finding_tier": "E1",
+    "target_finding_tier_retained": null
+  },
+  "derived_regenerated_image": "exports/derived/DERIVED_regen_WF-001.png"
+}

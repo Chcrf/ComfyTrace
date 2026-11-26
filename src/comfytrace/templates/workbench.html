@@ -1,0 +1,3106 @@
+<!DOCTYPE html>
+<!--
+  Design notes — Variant B: Case-File Workbench
+  Idea: A three-pane master-detail forensic workbench (tier rail + finding queue on the left,
+  evidence viewer with recovered-vs-replayed comparison and 7-node SVG workflow graph in the
+  centre, and a top-to-bottom copyable chain-of-custody provenance panel on the right).
+  Who it serves best: Forensic examiners and technical reviewers triaging dozens of findings
+  rapidly via keyboard (↑/↓, 1–6) while auditing hashes, memory offsets, and provenance links;
+  plain-English tier rationales and clean print layout keep it legible for attorneys and managers.
+  Trade-offs: Higher information density than a linear report; at narrower widths (728px) the
+  provenance chain stacks below the centre workspace rather than sitting persistently beside it.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ComfyTrace workbench — __COMFYTRACE_TITLE__</title>
+<style>
+  :root {
+    --bg-canvas: #f4f6f9;
+    --bg-surface: #ffffff;
+    --bg-subtle: #f0f2f6;
+    --bg-hover: #e8ecf2;
+    --bg-active: #e4ebf7;
+    --bg-code: #eef1f6;
+    --border: #dde2ea;
+    --border-strong: #c4ccd9;
+    --ink: #111827;
+    --ink-secondary: #434d5e;
+    --ink-muted: #556070;
+    --accent: #1e40af;
+    --accent-soft: rgba(30, 64, 175, 0.10);
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.12);
+
+    /* Evidence tier palette (strongest E1 -> weakest E6) */
+    --e1-fg: #065f46; --e1-bg: #d1fae5; --e1-border: #6ee7b7; --e1-bar: #059669;
+    --e2-fg: #1e40af; --e2-bg: #dbeafe; --e2-border: #93c5fd; --e2-bar: #2563eb;
+    --e3-fg: #075985; --e3-bg: #e0f2fe; --e3-border: #7dd3fc; --e3-bar: #0284c7;
+    --e4-fg: #5b21b6; --e4-bg: #ede9fe; --e4-border: #c4b5fd; --e4-bar: #7c3aed;
+    --e5-fg: #92400e; --e5-bg: #fef3c7; --e5-border: #fcd34d; --e5-bar: #d97706;
+    --e6-fg: #475569; --e6-bg: #e2e8f0; --e6-border: #cbd5e1; --e6-bar: #64748b;
+    --ut-fg: #475569; --ut-bg: #f1f5f9; --ut-border: #cbd5e1;
+
+    /* Derived artifact marker */
+    --derived-fg: #9a3412;
+    --derived-bg: #ffedd5;
+    --derived-border: #fdba74;
+
+    /* Status colors */
+    --ok-fg: #065f46; --ok-bg: #ecfdf5;
+    --warn-fg: #92400e; --warn-bg: #fffbeb;
+
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --radius: 6px;
+    --radius-sm: 4px;
+    --topbar-h: 50px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg-canvas: #0d1016;
+      --bg-surface: #141821;
+      --bg-subtle: #1a202c;
+      --bg-hover: #212938;
+      --bg-active: #1c283d;
+      --bg-code: #1d2432;
+      --border: #262f3f;
+      --border-strong: #374357;
+      --ink: #e8edf5;
+      --ink-secondary: #a5b0c2;
+      --ink-muted: #8b98ad;
+      --accent: #60a5fa;
+      --accent-soft: rgba(96, 165, 250, 0.14);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+      --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.55);
+
+      --e1-fg: #6ee7b7; --e1-bg: rgba(16, 185, 129, 0.16); --e1-border: rgba(52, 211, 153, 0.38); --e1-bar: #10b981;
+      --e2-fg: #93c5fd; --e2-bg: rgba(59, 130, 246, 0.16); --e2-border: rgba(96, 165, 250, 0.38); --e2-bar: #3b82f6;
+      --e3-fg: #7dd3fc; --e3-bg: rgba(14, 165, 233, 0.16); --e3-border: rgba(56, 189, 248, 0.38); --e3-bar: #0ea5e9;
+      --e4-fg: #c4b5fd; --e4-bg: rgba(139, 92, 246, 0.16); --e4-border: rgba(167, 139, 250, 0.38); --e4-bar: #8b5cf6;
+      --e5-fg: #fcd34d; --e5-bg: rgba(245, 158, 11, 0.15); --e5-border: rgba(251, 191, 36, 0.38); --e5-bar: #f59e0b;
+      --e6-fg: #cbd5e1; --e6-bg: rgba(148, 163, 184, 0.14); --e6-border: rgba(148, 163, 184, 0.34); --e6-bar: #94a3b8;
+      --ut-fg: #94a3b8; --ut-bg: rgba(148, 163, 184, 0.10); --ut-border: rgba(148, 163, 184, 0.25);
+
+      --derived-fg: #fdba74;
+      --derived-bg: rgba(234, 88, 12, 0.18);
+      --derived-border: rgba(251, 146, 60, 0.48);
+
+      --ok-fg: #6ee7b7; --ok-bg: rgba(16, 185, 129, 0.13);
+      --warn-fg: #fcd34d; --warn-bg: rgba(245, 158, 11, 0.13);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg-canvas: #0d1016;
+    --bg-surface: #141821;
+    --bg-subtle: #1a202c;
+    --bg-hover: #212938;
+    --bg-active: #1c283d;
+    --bg-code: #1d2432;
+    --border: #262f3f;
+    --border-strong: #374357;
+    --ink: #e8edf5;
+    --ink-secondary: #a5b0c2;
+    --ink-muted: #8b98ad;
+    --accent: #60a5fa;
+    --accent-soft: rgba(96, 165, 250, 0.14);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.55);
+
+    --e1-fg: #6ee7b7; --e1-bg: rgba(16, 185, 129, 0.16); --e1-border: rgba(52, 211, 153, 0.38); --e1-bar: #10b981;
+    --e2-fg: #93c5fd; --e2-bg: rgba(59, 130, 246, 0.16); --e2-border: rgba(96, 165, 250, 0.38); --e2-bar: #3b82f6;
+    --e3-fg: #7dd3fc; --e3-bg: rgba(14, 165, 233, 0.16); --e3-border: rgba(56, 189, 248, 0.38); --e3-bar: #0ea5e9;
+    --e4-fg: #c4b5fd; --e4-bg: rgba(139, 92, 246, 0.16); --e4-border: rgba(167, 139, 250, 0.38); --e4-bar: #8b5cf6;
+    --e5-fg: #fcd34d; --e5-bg: rgba(245, 158, 11, 0.15); --e5-border: rgba(251, 191, 36, 0.38); --e5-bar: #f59e0b;
+    --e6-fg: #cbd5e1; --e6-bg: rgba(148, 163, 184, 0.14); --e6-border: rgba(148, 163, 184, 0.34); --e6-bar: #94a3b8;
+    --ut-fg: #94a3b8; --ut-bg: rgba(148, 163, 184, 0.10); --ut-border: rgba(148, 163, 184, 0.25);
+
+    --derived-fg: #fdba74;
+    --derived-bg: rgba(234, 88, 12, 0.18);
+    --derived-border: rgba(251, 146, 60, 0.48);
+
+    --ok-fg: #6ee7b7; --ok-bg: rgba(16, 185, 129, 0.13);
+    --warn-fg: #fcd34d; --warn-bg: rgba(245, 158, 11, 0.13);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg-canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button, input {
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .num { font-variant-numeric: tabular-nums; }
+
+  button:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .term { border-bottom: 1px dotted var(--ink-muted); cursor: help; }
+  .row-tag { font-family: var(--font-sans); font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+    padding: 0 4px; border-radius: 3px; line-height: 1.5; }
+  .row-tag.derived { color: var(--derived-fg); background: var(--derived-bg); border: 1px dashed var(--derived-border); }
+  .row-tag.replay { color: var(--ink-secondary); border: 1px dotted var(--ink-muted); }
+
+  /* Tier helper classes */
+  .t-E1 { --t-fg: var(--e1-fg); --t-bg: var(--e1-bg); --t-bd: var(--e1-border); --t-bar: var(--e1-bar); }
+  .t-E2 { --t-fg: var(--e2-fg); --t-bg: var(--e2-bg); --t-bd: var(--e2-border); --t-bar: var(--e2-bar); }
+  .t-E3 { --t-fg: var(--e3-fg); --t-bg: var(--e3-bg); --t-bd: var(--e3-border); --t-bar: var(--e3-bar); }
+  .t-E4 { --t-fg: var(--e4-fg); --t-bg: var(--e4-bg); --t-bd: var(--e4-border); --t-bar: var(--e4-bar); }
+  .t-E5 { --t-fg: var(--e5-fg); --t-bg: var(--e5-bg); --t-bd: var(--e5-border); --t-bar: var(--e5-bar); }
+  .t-E6 { --t-fg: var(--e6-fg); --t-bg: var(--e6-bg); --t-bd: var(--e6-border); --t-bar: var(--e6-bar); }
+  .t-UT { --t-fg: var(--ut-fg); --t-bg: var(--ut-bg); --t-bd: var(--ut-border); --t-bar: var(--ut-fg); }
+
+  .tier-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--t-fg);
+    background: var(--t-bg);
+    border: 1px solid var(--t-bd);
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .art-wrap { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .art-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; image-rendering: auto; }
+  /* A partial image is drawn at the full image's geometry: recovered scanlines from the top (row 0 level with row 0
+     of a lab replay beside it), the unrecovered remainder hatched strictly below them, never over them. */
+  .art-wrap.is-partial svg { width: 100%; height: 100%; display: block; }
+  .art-hatch-bg { fill: var(--bg-subtle); }
+  .art-hatch-stripe { stroke: var(--border-strong); }
+  .art-hatch-edge { stroke: var(--derived-fg); stroke-dasharray: 6 4; }
+  .art-hatch-label { fill: var(--ink-secondary); font-family: var(--font-mono); font-weight: 600; }
+  .art-missing { width: 100%; height: 100%; min-height: 60px; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 8px; color: var(--ink-muted); font-size: 11px; background: var(--bg-subtle); }
+  .graph-svg-wrap { overflow-x: auto; }
+  .replay-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    border: 1px dotted var(--ink-muted);
+    color: var(--ink-secondary);
+  }
+  .derived-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--derived-fg);
+    background: var(--derived-bg);
+    border: 1px dashed var(--derived-border);
+    white-space: nowrap;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    color: var(--ink-secondary);
+    white-space: nowrap;
+  }
+
+  /* Top Case Header */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: var(--topbar-h);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    gap: 12px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .brand-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    background: var(--ink);
+    color: var(--bg-surface);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .brand-ver {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-muted);
+    font-weight: 500;
+  }
+
+  .topbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .case-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .dump-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dump-sub {
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  kbd {
+    display: inline-block;
+    padding: 1px 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.3;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    color: var(--ink-secondary);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface);
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+    white-space: nowrap;
+  }
+
+  .btn:hover:not(:disabled) { background: var(--bg-hover); }
+  .btn:disabled { opacity: 0.42; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--ink);
+    color: var(--bg-surface);
+    border-color: var(--ink);
+  }
+  .btn-primary:hover:not(:disabled) { opacity: 0.88; background: var(--ink); }
+  .btn-sm { height: 24px; padding: 0 7px; font-size: 11px; }
+  .btn-icon { width: 28px; padding: 0; }
+
+  /* Export dropdown */
+  .dropdown { position: relative; }
+  .dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 5px);
+    min-width: 235px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    padding: 4px;
+    z-index: 60;
+    display: none;
+  }
+  .dropdown-menu.open { display: block; }
+  .dropdown-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .dropdown-item:hover:not(:disabled) { background: var(--bg-hover); }
+  .dropdown-item:disabled { opacity: 0.45; cursor: not-allowed; }
+  .dropdown-item strong { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .dropdown-item span { font-size: 11px; color: var(--ink-muted); }
+  .dropdown-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* Main 3-Pane Workbench Shell */
+  .workbench {
+    display: grid;
+    grid-template-columns: 286px minmax(0, 1fr) 304px;
+    align-items: start;
+    min-height: 760px;
+  }
+
+  /* Left Rail */
+  .rail {
+    position: sticky;
+    top: var(--topbar-h);
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--topbar-h));
+    max-height: calc(100vh - var(--topbar-h));
+    overflow: hidden;
+  }
+
+  .rail-section {
+    padding: 10px 10px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .rail-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+    margin-bottom: 6px;
+    padding: 0 2px;
+  }
+
+  .tier-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .tier-filter {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 4px 7px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s ease, border-color 0.1s ease;
+  }
+
+  .tier-filter:hover { background: var(--bg-hover); }
+  .tier-filter.active {
+    background: var(--bg-active);
+    border-color: var(--border-strong);
+  }
+
+  .tier-filter .tf-code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--t-fg, var(--ink));
+    background: var(--t-bg, var(--bg-subtle));
+    border: 1px solid var(--t-bd, var(--border));
+    border-radius: 3px;
+    text-align: center;
+    padding: 1px 0;
+  }
+
+  .tier-filter .tf-label {
+    font-size: 12px;
+    color: var(--ink-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tier-filter.active .tf-label { color: var(--ink); font-weight: 600; }
+
+  .tier-filter .tf-count {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .untiered-row {
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .untiered-toggle {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 10.5px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+  }
+  .untiered-toggle:hover { background: var(--bg-hover); }
+  .untiered-toggle.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  /* Search box */
+  .search-wrap {
+    position: relative;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .search-input {
+    width: 100%;
+    height: 30px;
+    padding: 0 26px 0 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-subtle);
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+  }
+
+  .search-input:focus {
+    background: var(--bg-surface);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--ink-muted);
+    pointer-events: none;
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--ink-muted);
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+  }
+  .search-clear.visible { display: inline-flex; }
+  .search-clear:hover { background: var(--bg-hover); color: var(--ink); }
+
+  /* Finding List */
+  .finding-list-bar {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--ink-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-subtle);
+  }
+
+  .finding-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .finding-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    padding: 7px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    position: relative;
+  }
+
+  .finding-row:hover { background: var(--bg-hover); }
+  .finding-row.active {
+    background: var(--bg-active);
+    border-color: var(--border-strong);
+  }
+  .finding-row.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--t-bar, var(--accent));
+  }
+
+  .finding-thumb {
+    width: 44px;
+    height: 44px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    background: var(--bg-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .finding-thumb svg { width: 100%; height: 100%; display: block; }
+
+  .finding-row-top {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 2px;
+    flex-wrap: wrap;
+  }
+
+  .finding-row-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .finding-row-copies {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+  }
+
+  .finding-row-rationale {
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.35;
+  }
+
+  .empty-state {
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--ink-muted);
+    font-size: 12px;
+  }
+
+  /* Centre Workspace */
+  .centre {
+    overflow-y: auto;
+    padding: 16px 18px 32px;
+    min-width: 0;
+  }
+
+  .centre-inner {
+    max-width: 920px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-body { padding: 14px; }
+
+  /* Finding Header Card */
+  .finding-hero {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .finding-hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .finding-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .finding-id-lg {
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .finding-tier-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--t-fg);
+  }
+
+  .nav-pager {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .pager-text {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    padding: 0 5px;
+  }
+
+  .rationale-text {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+
+  .job-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 9px 12px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+
+  .job-kv {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+  }
+
+  .job-k { color: var(--ink-muted); font-size: 11px; }
+  .job-v { color: var(--ink); font-weight: 500; }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .status-ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .status-warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .status-neutral { background: var(--bg-subtle); color: var(--ink-secondary); border: 1px solid var(--border); }
+
+  /* Image Evidence Section */
+  .copy-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(172px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .copy-card {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 6px 8px 6px 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-subtle);
+    cursor: pointer;
+    min-width: 0;
+    text-align: left;
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+
+  .copy-card:hover { background: var(--bg-hover); }
+  .copy-card.active {
+    background: var(--bg-active);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .copy-thumb {
+    width: 42px;
+    height: 42px;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg-canvas);
+  }
+  .copy-thumb svg { width: 100%; height: 100%; display: block; }
+
+  .copy-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .copy-id-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .copy-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .copy-kind {
+    font-size: 10.5px;
+    color: var(--ink-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .copy-tags {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--ink-muted);
+  }
+
+  /* Main Large Image / Comparison Stage */
+  .image-stage {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .image-stage.side-by-side {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .image-pane {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .image-pane-head {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 11.5px;
+  }
+
+  .image-frame {
+    aspect-ratio: 1 / 1;
+    max-height: 360px;
+    width: 100%;
+    margin: 0 auto;
+    background: var(--bg-canvas);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .image-stage:not(.side-by-side) .image-frame {
+    max-width: 380px;
+  }
+
+  .image-frame svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .image-pane-foot {
+    padding: 6px 10px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-muted);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* Compact artifact caption under the image stage (replaces the old 9-cell metadata grid). */
+  .artifact-caption {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+  }
+  .artifact-caption .k { color: var(--ink-muted); margin-right: 4px; }
+  .artifact-caption .mono { word-break: break-all; }
+  .derived-callout, .note-callout {
+    margin-top: 10px;
+    padding: 7px 10px;
+    border: 1px dashed var(--derived-border);
+    border-radius: var(--radius-sm);
+    background: var(--derived-bg);
+    color: var(--derived-fg);
+    font-size: 12px;
+  }
+  .note-callout { border-color: var(--border-strong); background: var(--bg-subtle); color: var(--ink-secondary); }
+  .hash-rows { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+  .hash-row { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+  .hash-row .k { color: var(--ink-muted); white-space: nowrap; font-family: var(--font-sans); min-width: 132px; }
+  .hash-row .v { color: var(--ink-secondary); word-break: break-all; }
+  .same-badge { font-family: var(--font-sans); font-size: 10.5px; color: var(--ok-fg); background: var(--ok-bg);
+    border-radius: 3px; padding: 0 5px; }
+
+  /* Workflow Area: SVG Graph + Key Parameters side by side */
+  .workflow-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+  @media (min-width: 1220px) {
+    .workflow-layout.has-graph { grid-template-columns: minmax(250px, 0.95fr) minmax(270px, 1.05fr); }
+  }
+
+  .graph-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    overflow: hidden;
+  }
+
+  .graph-bar {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-surface);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--ink-muted);
+  }
+
+  .graph-svg-wrap {
+    padding: 8px 6px 4px;
+    overflow-x: auto;
+  }
+
+  .graph-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    min-width: 310px;
+  }
+
+  .wf-node { cursor: pointer; outline: none; }
+  .wf-node:focus-visible rect.node-box { stroke: var(--accent); stroke-width: 2.6; stroke-dasharray: 4 2; }
+  .wf-node rect.node-box {
+    fill: var(--bg-surface);
+    stroke: var(--border-strong);
+    stroke-width: 1.35;
+    transition: stroke 0.12s ease, fill 0.12s ease;
+  }
+  .wf-node:hover rect.node-box { stroke: var(--accent); }
+  .wf-node.selected rect.node-box {
+    stroke: var(--accent);
+    stroke-width: 2.2;
+    fill: var(--bg-active);
+  }
+  .wf-node text.node-title {
+    fill: var(--ink);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .wf-node text.node-sub {
+    fill: var(--ink-muted);
+    font-family: var(--font-sans);
+    font-size: 9.5px;
+  }
+  .wf-edge {
+    fill: none;
+    stroke: var(--ink-muted);
+    stroke-width: 1.4;
+    opacity: 0.78;
+  }
+
+  .node-inspector {
+    border-top: 1px solid var(--border);
+    background: var(--bg-surface);
+    padding: 8px 10px;
+    font-size: 11.5px;
+  }
+  .node-inspector-title {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 3px;
+  }
+  .node-inspector-kv {
+    color: var(--ink-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    word-break: break-word;
+  }
+
+  /* Key Parameters beside graph */
+  .params-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .param-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .param-table tr { border-bottom: 1px solid var(--border); }
+  .param-table tr:last-child { border-bottom: none; }
+  .param-table th {
+    text-align: left;
+    padding: 5px 8px;
+    background: var(--bg-subtle);
+    color: var(--ink-muted);
+    font-weight: 600;
+    font-size: 11px;
+    width: 92px;
+    white-space: nowrap;
+  }
+  .param-table td {
+    padding: 5px 8px;
+    background: var(--bg-surface);
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  .prompt-box {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    padding: 7px 9px;
+  }
+
+  .prompt-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-muted);
+  }
+
+  .prompt-text {
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink);
+    line-height: 1.45;
+  }
+
+  .wf-copies-bar {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .copy-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .wf-copy-pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-subtle);
+    color: var(--ink-secondary);
+    cursor: pointer;
+  }
+  .wf-copy-pill:hover, .wf-copy-pill.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .wf-copy-detail {
+    margin-top: 8px;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+    display: none;
+  }
+  .wf-copy-detail.open { display: block; }
+
+  details.raw-json {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+  }
+  details.raw-json summary {
+    padding: 7px 10px;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-secondary);
+    user-select: none;
+  }
+  details.raw-json pre {
+    margin: 0;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-code);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    overflow-x: auto;
+    max-height: 260px;
+    color: var(--ink);
+  }
+
+  /* Right Panel: Provenance Chain */
+  .provenance {
+    position: sticky;
+    top: var(--topbar-h);
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--topbar-h));
+    max-height: calc(100vh - var(--topbar-h));
+    overflow: hidden;
+  }
+
+  .prov-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .prov-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-secondary);
+    white-space: nowrap;
+  }
+
+  .prov-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px 20px;
+  }
+
+  .chain {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .chain-step {
+    position: relative;
+    padding-left: 22px;
+    padding-bottom: 14px;
+  }
+
+  .chain-step:last-child { padding-bottom: 0; }
+
+  /* Vertical connector line */
+  .chain-step:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 14px;
+    bottom: 0;
+    width: 1.5px;
+    background: var(--border-strong);
+  }
+  .chain-step.absent:not(:last-child)::before {
+    border-left: 1.5px dashed var(--border-strong);
+    background: transparent;
+  }
+
+  .chain-dot {
+    position: absolute;
+    left: 1px;
+    top: 3px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg-surface);
+  }
+  .chain-step.verified .chain-dot { background: var(--e1-bar); border-color: var(--e1-bar); }
+  .chain-step.derived .chain-dot { background: var(--derived-bg); border-color: var(--derived-fg); }
+  .chain-step.absent .chain-dot { background: var(--bg-subtle); border-color: var(--border-strong); }
+
+  .chain-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    padding: 8px 9px;
+  }
+  .chain-step.absent .chain-card {
+    opacity: 0.65;
+    border-style: dashed;
+  }
+
+  .chain-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 3px;
+  }
+
+  .chain-role {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+  }
+
+  .copy-btn {
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface);
+    color: var(--ink-secondary);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .copy-btn:hover { background: var(--bg-hover); color: var(--ink); }
+  .copy-btn.copied {
+    border-color: var(--e1-bar);
+    color: var(--e1-fg);
+    background: var(--e1-bg);
+  }
+
+  .chain-id {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--ink);
+    word-break: break-all;
+    margin-bottom: 2px;
+  }
+
+  .chain-hash {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-secondary);
+    word-break: break-all;
+    background: var(--bg-code);
+    padding: 2px 5px;
+    border-radius: 3px;
+    margin-top: 3px;
+  }
+
+  .chain-sub {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-top: 3px;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 90;
+    background: var(--ink);
+    color: var(--bg-surface);
+    padding: 8px 13px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* Responsive: 728px usable layout */
+  @media (max-width: 1060px) {
+    .workbench {
+      grid-template-columns: 244px minmax(0, 1fr);
+      min-height: 0;
+    }
+    .rail {
+      position: sticky;
+      top: var(--topbar-h);
+    }
+    .centre {
+      overflow: visible;
+      padding: 14px;
+    }
+    .provenance {
+      position: static;
+      height: auto;
+      max-height: none;
+      grid-column: 2;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      overflow: visible;
+    }
+    .prov-scroll { overflow: visible; }
+    .workflow-layout { grid-template-columns: 1fr; }
+    .dump-sub { display: none; }
+  }
+
+  @media (max-width: 780px) {
+    .image-stage.side-by-side { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 640px) {
+    .workbench { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
+    .finding-list { max-height: 240px; }
+    .provenance { grid-column: 1; }
+  }
+
+  /* Print Styles: Clean forensic dossier of selected finding */
+  @media print {
+    :root, :root[data-theme="dark"], :root[data-theme="light"], :root:not([data-theme="light"]) {
+      --bg-hover: #f3f4f6;
+      --bg-active: #eef2f7;
+      --accent: #1e40af;
+      --accent-soft: rgba(30, 64, 175, 0.10);
+      --e1-fg: #065f46; --e1-bg: #d1fae5; --e1-border: #6ee7b7; --e1-bar: #059669;
+      --e2-fg: #1e40af; --e2-bg: #dbeafe; --e2-border: #93c5fd; --e2-bar: #2563eb;
+      --e3-fg: #075985; --e3-bg: #e0f2fe; --e3-border: #7dd3fc; --e3-bar: #0284c7;
+      --e4-fg: #5b21b6; --e4-bg: #ede9fe; --e4-border: #c4b5fd; --e4-bar: #7c3aed;
+      --e5-fg: #92400e; --e5-bg: #fef3c7; --e5-border: #fcd34d; --e5-bar: #d97706;
+      --e6-fg: #475569; --e6-bg: #e2e8f0; --e6-border: #cbd5e1; --e6-bar: #64748b;
+      --ut-fg: #475569; --ut-bg: #f1f5f9; --ut-border: #cbd5e1;
+      --derived-fg: #9a3412; --derived-bg: #ffedd5; --derived-border: #fdba74;
+      --ok-fg: #065f46; --ok-bg: #ecfdf5;
+      --warn-fg: #92400e; --warn-bg: #fffbeb;
+      --bg-canvas: #ffffff;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f7f8fa;
+      --bg-code: #f3f4f6;
+      --border: #d1d5db;
+      --border-strong: #9ca3af;
+      --ink: #000000;
+      --ink-secondary: #374151;
+      --ink-muted: #4b5563;
+    }
+    .rail, .topbar-actions, .nav-pager, .copy-btn, .toast, .btn, .kbd-pop { display: none !important; }
+    .provenance { position: static !important; height: auto !important; max-height: none !important; }
+    .prov-scroll { overflow: visible !important; }
+    details.raw-json[open] pre { max-height: none; }
+    .topbar { position: static; border-bottom: 2px solid #000; }
+    .workbench {
+      display: block !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+    .centre { padding: 12px 0 !important; overflow: visible !important; }
+    .provenance {
+      border-left: none !important;
+      border-top: 1px solid #9ca3af;
+      margin-top: 14px;
+      page-break-inside: avoid;
+    }
+    .card { box-shadow: none !important; break-inside: avoid; }
+  }
+
+  /* Workflow groups: findings that share one canonical workflow graph. */
+  .group-head {
+    margin: 8px 2px 2px;
+    padding: 5px 8px;
+    border-left: 3px solid var(--border-strong);
+    background: var(--bg-subtle);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    font-size: 11px;
+    color: var(--ink-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    align-items: center;
+  }
+  .group-head strong { color: var(--ink); font-family: var(--font-mono); }
+  .group-member { margin-left: 8px; width: calc(100% - 8px); }
+  .rail-counts { font-size: 11px; color: var(--ink-muted); line-height: 1.5; margin: 4px 2px 0; }
+  details.rail-inventory { margin-top: 6px; font-size: 11px; color: var(--ink-muted); }
+  details.rail-inventory summary { cursor: pointer; padding: 2px; user-select: none; }
+  .untiered-row .tier-filter { flex: 1; min-width: 0; }
+  .kbd-wrap { position: relative; }
+  .kbd-pop {
+    position: absolute; right: 0; top: calc(100% + 5px); z-index: 60; min-width: 220px; display: none;
+    background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius);
+    box-shadow: var(--shadow-md); padding: 8px 10px; font-size: 12px; color: var(--ink-secondary);
+  }
+  .kbd-pop.open { display: block; }
+  .kbd-pop div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  .mode-badge { font-size: 11px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border);
+    background: var(--bg-subtle); color: var(--ink-secondary); white-space: nowrap; }
+  .mode-badge.degraded { color: var(--warn-fg); background: var(--warn-bg); border-color: var(--e5-border); }
+  .tier-desc { margin: -4px 0 0; font-size: 12px; color: var(--ink-muted); }
+  .promotion-callout {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    padding: 7px 10px; border-radius: var(--radius-sm); font-size: 12px;
+    background: var(--t-bg); border: 1px solid var(--t-bd); color: var(--t-fg);
+  }
+  .rationale-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--ink-muted); margin-bottom: 2px; }
+  .compare-head {
+    display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  .compare-head-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .group-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .group-table th, .group-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border);
+    vertical-align: top; }
+  .group-table th { color: var(--ink-muted); font-weight: 600; }
+  .group-table tr.current td { background: var(--bg-active); }
+  .group-facts { margin: 0 0 10px; padding-left: 18px; font-size: 12px; }
+  .group-facts li { margin: 3px 0; }
+  .cmp-tag { font-size: 10px; padding: 0 4px; border-radius: 3px; background: var(--bg-subtle); }
+  .cmp-tag.match { background: var(--ok-bg); color: var(--ok-fg); }
+  .cmp-tag.differ { background: var(--warn-bg); color: var(--warn-fg); }
+  .link-btn { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit;
+    text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand-group">
+    <div class="brand-mark">
+      <span class="brand-icon">CT</span>
+      <span>ComfyTrace</span>
+      <span class="brand-ver" id="ctVersion"></span>
+    </div>
+    <span class="topbar-sep"></span>
+    <div class="case-meta">
+      <span class="dump-name" id="ctDump" title="RAM dump image"></span>
+      <span class="dump-sub mono" id="ctDumpSub"></span>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <div class="kbd-wrap" id="kbdWrap">
+      <button class="btn btn-sm btn-icon" id="kbdBtn" aria-haspopup="true" aria-expanded="false" aria-controls="kbdPop" title="Keyboard shortcuts (?)">?</button>
+      <div class="kbd-pop" id="kbdPop" role="dialog" aria-label="Keyboard shortcuts">
+        <div><span><kbd>↑</kbd> <kbd>↓</kbd></span><span>previous / next finding</span></div>
+        <div><span><kbd>1</kbd>–<kbd>6</kbd>, <kbd>0</kbd></span><span>filter by tier, all</span></div>
+        <div><span><kbd>/</kbd></span><span>search</span></div>
+        <div><span><kbd>Enter</kbd></span><span>inspect a focused graph node</span></div>
+        <div><span><kbd>Esc</kbd></span><span>clear search or filter</span></div>
+        <div><span><kbd>?</kbd></span><span>show or hide this list</span></div>
+      </div>
+    </div>
+    <button class="btn btn-sm" id="themeBtn" title="Toggle light or dark appearance">Theme: Auto</button>
+    <div class="dropdown" id="exportDropdown">
+      <button class="btn btn-primary" id="exportToggle" aria-haspopup="true" aria-expanded="false">
+        Export ▾
+      </button>
+      <div class="dropdown-menu" id="exportMenu" role="menu">
+        <button class="dropdown-item" id="expImage" role="menuitem">
+          <strong>Image (raw bytes as recovered)</strong>
+          <span id="expImageSub">Download selected image artifact</span>
+        </button>
+        <button class="dropdown-item" id="expWorkflow" role="menuitem">
+          <strong>Workflow JSON (API graph)</strong>
+          <span id="expWorkflowSub">Download recovered node graph JSON</span>
+        </button>
+        <button class="dropdown-item" id="expBundle" role="menuitem">
+          <strong>Evidence bundle JSON</strong>
+          <span>Full finding, hashes, offsets &amp; provenance</span>
+        </button>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item" id="expPrint" role="menuitem">
+          <strong>Print / Save PDF of finding</strong>
+          <span>Formatted single-finding forensic dossier</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="workbench">
+  <!-- LEFT RAIL: Tier filters, Search, Finding List -->
+  <aside class="rail" aria-label="Evidence tiers and findings">
+    <div class="rail-section">
+      <div class="rail-heading">
+        <span>Evidence Tiers</span>
+      </div>
+      <div class="tier-stack" id="tierStack"></div>
+      <details class="rail-inventory" id="ctInventory" hidden>
+        <summary id="ctInventorySummary">Case inventory</summary>
+        <div class="rail-counts" id="ctCounts"></div>
+      </details>
+    </div>
+
+    <div class="search-wrap">
+      <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input
+        type="text"
+        id="searchInput"
+        class="search-input"
+        placeholder="Finding, artifact, prompt ID, seed…"
+        aria-label="Filter findings by ID, artifact, prompt ID, or seed"
+      >
+      <button class="search-clear" id="searchClear" title="Clear search" aria-label="Clear search">×</button>
+    </div>
+
+    <div class="finding-list-bar">
+      <span id="listStatusText">Showing 17 findings</span>
+      <span class="mono" id="listIndexText">1 / 17</span>
+    </div>
+
+    <div class="finding-list" id="findingList" role="listbox" aria-label="Findings"></div>
+  </aside>
+
+  <!-- CENTRE: Selected Finding Detail -->
+  <main class="centre" id="centreMain">
+    <div class="centre-inner" id="centreInner"></div>
+  </main>
+
+  <!-- RIGHT PANEL: Provenance Chain -->
+  <aside class="provenance" aria-label="Provenance chain">
+    <div class="prov-header">
+      <span class="prov-title">Provenance Chain</span>
+      <span class="chip mono" id="provCopyTag">Chain of custody</span>
+    </div>
+    <div class="prov-scroll" id="provContainer"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script id="ct-data" type="application/json">__COMFYTRACE_DATA__</script>
+<script>
+(function() {
+  "use strict";
+
+  /* Case data, written by comfytrace.workbench into the JSON block above this script. */
+  const DATA = JSON.parse(document.getElementById("ct-data").textContent);
+  const CASE_META = DATA.case;
+  const TIERS = DATA.tiers;
+  const FINDINGS = DATA.findings;
+  const UNTIERED_SAMPLES = DATA.untiered;
+  const COUNTS = DATA.counts || null;
+  /* Workflow groups: findings sharing one canonical workflow digest. A group is drawn as a group when it has
+     several child findings or a seed cross-reference; otherwise its one finding stands alone (its lab replay is
+     shown on the finding itself). */
+  const GROUPS = {};
+  (DATA.groups || []).forEach(g => { GROUPS[g.id] = g; });
+  const BY_ID = {};
+  FINDINGS.concat(UNTIERED_SAMPLES).forEach(f => { BY_ID[f.id] = f; });
+
+  /* Plain-English labels for the pipeline's raw tokens. The raw token stays available in a title tooltip and in
+     every export; only the visible label changes. */
+  const DASH = "—";
+  const HUMAN_STATUS = {
+    EXACT_MATCH: "Exact pixel match",
+    ROW_SLICE_EXACT: "Exact match (recovered rows)",
+    PERCEPTUAL_MATCH: "Close visual match",
+    ROW_SLICE_PERCEPTUAL: "Close match (recovered rows)",
+    NO_MEMORY_TARGET: "Workflow ran in lab (no memory pixels to compare)",
+    EXECUTABLE_REPRODUCTION: "Workflow ran in lab (no memory pixels to compare)",
+    INCONCLUSIVE: "Inconclusive (no match claimed)",
+    INSUFFICIENT_ROWS: "Inconclusive (too few rows to score)",
+    INSUFFICIENT_DIMENSIONS: "Inconclusive (image too small to score)",
+    NON_MATCHING: "Did not match replay",
+    BELOW_THRESHOLDS: "Did not match replay",
+    DIMENSION_MISMATCH: "Dimensions differ",
+    NOT_COMPARED: "Not compared",
+    UNTESTED_SIBLING: "Not compared (replay tested another artifact)",
+    ANIMATED_COMPARISON_UNAVAILABLE: "Not compared (animated image)",
+    PARTIAL_CORROBORATION: "Partial corroboration (recovered rows)",
+    UNRECORDED: "No comparison recorded"
+  };
+  const HUMAN_LINK = {
+    STRICT: "Verified link",
+    UNASSOCIATED: "No metadata link",
+    AMBIGUOUS: "Ambiguous link",
+    NONE: "No link"
+  };
+  const HUMAN_KEY = {
+    CANONICAL_PROMPT_HASH: "Exact workflow graph hash",
+    EMBEDDED_PROMPT: "PNG embedded prompt",
+    EXECUTION_CACHE_SIGNATURE: "ComfyUI RAM cache signature",
+    EXECUTION_CACHE_REUSED: "ComfyUI cache reuse",
+    EXECUTION_GRAPH_MATCH: "Execution graph match",
+    PIXEL_IDENTITY_WITH_LINKED_OUTPUT: "Pixel-identical to a linked output",
+    REGENERATION_CLOSE_MATCH: "Close match to a lab replay",
+    RAW_REPLAY_WHOLE_FRAME: "Replay output found whole in the raw dump",
+    PROMPT_ID_GRAPH_CONFLICT: "Prompt ID conflicts with the graph"
+  };
+  const HUMAN_MODE = {
+    PROCESS_VIRTUAL: "Virtual memory (page tables intact)",
+    PHYSICAL_FALLBACK: "Physical scan (degraded — no page tables)"
+  };
+  const HUMAN_SEL_REASON = {
+    COMPLETE_NATIVE: "Complete image",
+    COMPLETE_DERIVED: "Complete derived reconstruction",
+    COMPLETE_ANIMATED: "Complete animation (first frame only)",
+    PARTIAL_MOST_DECODED_ROWS: "Partial image with most decoded rows",
+    MOST_DECODED_ROWS: "Partial image with most decoded rows",
+    ZERO_DECODED_ROWS: "0 decoded rows (header only)",
+    DECODED_ROWS_UNKNOWN: "Decoded row count unknown",
+    NO_COMPARABLE_TARGET: "No comparable image in memory",
+    NO_COMPARABLE_RASTER: "No comparable pixels",
+    PROMPT_ID_CONFLICT: "Linked to a different prompt ID",
+    INPUT_REVISION_UNVERIFIED: "Input image revision unverified",
+    PROMPT_TIER_FINDING: "Finding tiered by its prompt (not compared)"
+  };
+
+  function present(v) { return v !== null && v !== undefined && v !== "" && v !== DASH; }
+  function human(table, raw) { return present(raw) && table[raw] ? table[raw] : (raw ?? ""); }
+  function humanStatus(raw) { return human(HUMAN_STATUS, raw); }
+  function humanKeys(keys) {
+    return present(keys) ? String(keys).split(", ").map(k => human(HUMAN_KEY, k)).join(", ") : "";
+  }
+  /* A raw token as its plain label, the token itself in the tooltip. */
+  function termHtml(table, raw) {
+    if (!present(raw)) return DASH;
+    const label = human(table, raw);
+    return label === raw ? `<span class="mono">${esc(raw)}</span>` : `<span class="term" title="${esc(raw)}">${esc(label)}</span>`;
+  }
+  function keysHtml(keys) {
+    return present(keys) ? String(keys).split(", ").map(k => termHtml(HUMAN_KEY, k)).join(", ") : "";
+  }
+  /* Recorded text (a rationale) keeps its exact wording; known tokens in it gain a plain-English tooltip. */
+  function annotateTokens(escaped) {
+    return escaped.replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\bSTRICT\b|\bUNASSOCIATED\b|\bAMBIGUOUS\b/g, tok => {
+      const label = HUMAN_KEY[tok] || HUMAN_LINK[tok] || HUMAN_STATUS[tok] || HUMAN_MODE[tok] || HUMAN_SEL_REASON[tok];
+      return label ? `<span class="term" title="${esc(label)}">${tok}</span>` : tok;
+    });
+  }
+  function capitalize(s) { s = String(s ?? ""); return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+  /* Images with pixels to look at. A 0-row PNG container (a header carrying the prompt) is listed as container
+     provenance, never drawn as an image. */
+  function visualImages(f) { return ((f && f.images) || []).filter(im => !im.container); }
+
+  function shownGroup(f) {
+    const g = f && f.groupId ? GROUPS[f.groupId] : null;
+    return g && (g.children.length > 1 || g.seedXrefs.length > 0) ? g : null;
+  }
+
+  function orderByGroup(list) {
+    const buckets = new Map();
+    list.forEach(f => {
+      const g = shownGroup(f);
+      const key = g ? g.id : "single:" + f.id;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(f);
+    });
+    const out = [];
+    buckets.forEach(members => out.push(...members));
+    return out;
+  }
+
+  function cmpClass(status) {
+    if (["EXACT_MATCH", "ROW_SLICE_EXACT", "PERCEPTUAL_MATCH", "ROW_SLICE_PERCEPTUAL"].includes(status)) return "match";
+    if (status === "NON_MATCHING") return "differ";
+    return "";
+  }
+
+  function rowsOf(label) {
+    const m = /^(\d+) of (\d+) rows/.exec(label || "");
+    return m ? { got: Number(m[1]), total: Number(m[2]) } : null;
+  }
+
+  /* A recovered image as the case recorded it: a bounded, hash-checked preview embedded by the report writer.
+     A partial image's preview holds only its decoded rows (width x decoded rows). It is drawn inside the full
+     image's frame: rows from the top, so row 0 sits level with row 0 of a lab replay beside it, and the
+     unrecovered remainder hatched strictly below the recovered rows. An image withheld by a failed check says why. */
+  let artSeq = 0;
+  function makeArtSVG(src, opts = {}) {
+    const pct = opts.partialPct ?? 100;
+    if (!src) {
+      const why = opts.omitted ? esc(opts.omitted) : "No preview embedded";
+      return `<div class="art-missing" title="${why}"><span>${opts.thumb ? "—" : why}</span></div>`;
+    }
+    const rows = rowsOf(opts.rowsLabel);
+    /* 1 row of 512 rounds to partialPct 0: the row count, not the percentage, decides. */
+    const isPartial = Boolean(rows) || pct < 100;
+    if (!isPartial) {
+      return `<div class="art-wrap"><img src="${src}" alt="${esc(opts.alt || "Recovered image")}"></div>`;
+    }
+    const dims = /^(\d+)x(\d+)$/.exec(opts.size || "");
+    const total = rows ? Math.max(rows.total, 1) : 100;
+    const H = dims ? Number(dims[2]) : total;
+    const W = dims ? Number(dims[1]) : H;
+    const got = rows ? Math.min(rows.got, total) : pct;
+    /* At least 1.5% of the height, so a 1-row strip stays visible; the label states the true count. */
+    const visH = Math.min(H, Math.max(got * H / total, H * 0.015));
+    const rest = H - visH;
+    const missing = rows ? `${rows.got} of ${rows.total} rows recovered · remainder not in RAM` : `${100 - pct}% not recovered`;
+    const id = "ctHatch" + (++artSeq);
+    const step = Math.max(4, Math.round(Math.max(W, H) / 48));
+    const font = Math.min(W / 38, rest * 0.4);
+    const label = !opts.thumb && rest > 0 && font > 0
+      ? `<text class="art-hatch-label" x="${W / 2}" y="${visH + rest / 2}" text-anchor="middle" dominant-baseline="middle" font-size="${font}">${esc(missing)}</text>` : "";
+    return `<div class="art-wrap is-partial" title="${esc(missing)}">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc((opts.alt || "Recovered partial image") + ": " + missing)}">
+        <defs><pattern id="${id}" patternUnits="userSpaceOnUse" width="${step}" height="${step}" patternTransform="rotate(45)"><line class="art-hatch-stripe" x1="0" y1="0" x2="0" y2="${step}" stroke-width="${step / 2}"/></pattern></defs>
+        <rect class="art-hatch art-hatch-bg" x="0" y="${visH}" width="${W}" height="${rest}"/>
+        <rect class="art-hatch" x="0" y="${visH}" width="${W}" height="${rest}" fill="url(#${id})"/>
+        <image class="art-rows" href="${src}" x="0" y="0" width="${W}" height="${visH}" preserveAspectRatio="none"/>
+        <line class="art-hatch-edge" x1="0" y1="${visH}" x2="${W}" y2="${visH}" stroke-width="${Math.max(1, H / 256)}"/>
+        ${label}
+      </svg></div>`;
+  }
+
+  function makeNoImageThumb(tier) {
+    return `<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+      <rect width="44" height="44" fill="var(--bg-subtle)"/>
+      <rect x="8" y="11" width="11" height="8" rx="2" fill="none" stroke="var(--ink-muted)" stroke-width="1.6"/>
+      <rect x="25" y="11" width="11" height="8" rx="2" fill="none" stroke="var(--ink-muted)" stroke-width="1.6"/>
+      <rect x="16" y="26" width="12" height="8" rx="2" fill="none" stroke="var(--ink-muted)" stroke-width="1.6"/>
+      <path d="M19 15 H25 M22 19 V26" stroke="var(--ink-muted)" stroke-width="1.4"/>
+    </svg>`;
+  }
+
+  function buildApiWorkflowJson(wf) {
+    return (wf && wf.graph) || {};
+  }
+
+  /* Application State */
+  const state = {
+    tierFilter: "ALL",     // "ALL" | "E1".."E6" | "UT"
+    showUntiered: false,
+    search: "",
+    selectedId: FINDINGS.length ? FINDINGS[0].id : null, // strongest finding first
+    selectedCopyIdx: 0,     // index into the finding's visual images
+    selectedNodeId: null,   // defaults to the graph's sampler node
+    selectedWfCopyIdx: null,
+    showAllWfCopies: false,
+    theme: "auto"           // "auto" | "light" | "dark"
+  };
+  const WF_COPIES_SHOWN = 5;
+
+  /* DOM refs */
+  const tierStackEl = document.getElementById("tierStack");
+  const searchInputEl = document.getElementById("searchInput");
+  const searchClearEl = document.getElementById("searchClear");
+  const findingListEl = document.getElementById("findingList");
+  const listStatusEl = document.getElementById("listStatusText");
+  const listIndexEl = document.getElementById("listIndexText");
+  const centreInnerEl = document.getElementById("centreInner");
+  const provContainerEl = document.getElementById("provContainer");
+  const provCopyTagEl = document.getElementById("provCopyTag");
+  const exportToggleEl = document.getElementById("exportToggle");
+  const exportMenuEl = document.getElementById("exportMenu");
+  const expImageEl = document.getElementById("expImage");
+  const expImageSubEl = document.getElementById("expImageSub");
+  const expWorkflowEl = document.getElementById("expWorkflow");
+  const expWorkflowSubEl = document.getElementById("expWorkflowSub");
+  const expBundleEl = document.getElementById("expBundle");
+  const expPrintEl = document.getElementById("expPrint");
+  const themeBtnEl = document.getElementById("themeBtn");
+  const kbdBtnEl = document.getElementById("kbdBtn");
+  const kbdPopEl = document.getElementById("kbdPop");
+  const toastEl = document.getElementById("toast");
+
+  let toastTimer = null;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
+  function esc(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function shortHash(h, n = 16) {
+    if (!h) return "—";
+    return h.length > n ? h.slice(0, n) + "…" : h;
+  }
+
+  /* One labelled hash line with its own Copy button; a missing hash says why instead of printing a dash. */
+  function hashRow(label, value, n, missingText, extra = "") {
+    return `<div class="hash-row"><span class="k">${esc(label)}</span>${value
+      ? `<span class="v mono" title="${esc(value)}">${esc(shortHash(value, n))}</span><button class="copy-btn" data-copy="${esc(value)}" title="Copy ${esc(label)}">Copy</button>`
+      : `<span class="v">${esc(missingText)}</span>`}${extra}</div>`;
+  }
+
+  function copyText(text, btn) {
+    const done = () => {
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = "Copied";
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove("copied");
+        }, 1200);
+      }
+      showToast("Copied to clipboard");
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, cb) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta);
+    cb();
+  }
+
+  function downloadBlob(filename, content, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast("Exported " + filename);
+  }
+
+  function getPool() {
+    return state.showUntiered ? FINDINGS.concat(UNTIERED_SAMPLES) : FINDINGS;
+  }
+
+  function getFilteredFindings() {
+    const q = state.search.trim().toLowerCase();
+    return orderByGroup(getPool().filter(f => {
+      if (state.tierFilter !== "ALL" && f.tier !== state.tierFilter) return false;
+      if (!q) return true;
+      const hay = [
+        f.id,
+        f.tier,
+        f.tierLabel,
+        f.rationale,
+        f.groupId,
+        ...(f.workflowIds || []),
+        f.job && f.job.promptId,
+        f.workflow && f.workflow.id,
+        f.workflow && f.workflow.params && String(f.workflow.params.seed),
+        f.workflow && f.workflow.params && f.workflow.params.positive,
+        f.replay && f.replay.id,
+        ...(f.images || []).map(im => [im.id, im.kind, im.key, im.offset].join(" "))
+      ].filter(Boolean).join(" ").toLowerCase();
+      return hay.includes(q);
+    }));
+  }
+
+  function getActiveFinding(list) {
+    let f = list.find(x => x.id === state.selectedId);
+    if (!f && list.length > 0) {
+      f = list[0];
+      state.selectedId = f.id;
+      state.selectedCopyIdx = 0;
+      state.selectedWfCopyIdx = null;
+    }
+    return f || null;
+  }
+
+  /* Render Left Rail Tier Filter Stack: the tiers, then one untiered row (filter + include toggle). */
+  function renderTierStack() {
+    const tiersOrder = ["E1", "E2", "E3", "E4", "E5", "E6"];
+    let html = `
+      <button class="tier-filter ${state.tierFilter === "ALL" ? "active" : ""}" data-tier="ALL" title="All tiered findings (shortcut: 0)">
+        <span class="tf-code">ALL</span>
+        <span class="tf-label">All tiered findings</span>
+        <span class="tf-count">${FINDINGS.length}</span>
+      </button>
+    `;
+    tiersOrder.forEach(code => {
+      const t = TIERS[code];
+      const active = state.tierFilter === code ? "active" : "";
+      html += `
+        <button class="tier-filter t-${code} ${active}" data-tier="${code}" title="${esc(t.desc)} (shortcut: ${code[1]})">
+          <span class="tf-code">${code}</span>
+          <span class="tf-label">${esc(t.short)}</span>
+          <span class="tf-count">${t.count}</span>
+        </button>
+      `;
+    });
+    const listed = UNTIERED_SAMPLES.length < TIERS.UT.count ? ` (${UNTIERED_SAMPLES.length} listed)` : "";
+    html += `
+      <div class="untiered-row">
+        <button class="tier-filter t-UT ${state.tierFilter === "UT" ? "active" : ""}" data-tier="UT" title="${esc(TIERS.UT.desc)}">
+          <span class="tf-code">UT</span>
+          <span class="tf-label">Untiered${listed}</span>
+          <span class="tf-count">${TIERS.UT.count.toLocaleString()}</span>
+        </button>
+        <button class="untiered-toggle ${state.showUntiered ? "active" : ""}" aria-pressed="${state.showUntiered}"
+          title="${state.showUntiered ? "Untiered findings are in the list; click to hide them" : "Untiered findings are hidden; click to include them in the list"}">${state.showUntiered ? "Shown" : "Hidden"}</button>
+      </div>
+    `;
+    tierStackEl.innerHTML = html;
+  }
+
+  /* Render Finding List */
+  function renderFindingList(list, active) {
+    const idx = active ? list.findIndex(x => x.id === active.id) : -1;
+    listStatusEl.textContent = list.length === 1 ? "Showing 1 finding" : `Showing ${list.length} findings`;
+    listIndexEl.textContent = active ? `${idx + 1} / ${list.length}` : "0 / 0";
+
+    if (list.length === 0) {
+      findingListEl.innerHTML = `<div class="empty-state">No findings match the current filter and search query.</div>`;
+      return;
+    }
+
+    let lastGroup = null;
+    findingListEl.innerHTML = list.map(f => {
+      const isAct = active && f.id === active.id;
+      const visual = visualImages(f);
+      const hasDerived = visual.some(im => im.derived);
+      const copyCount = visual.length;
+      const firstWithPreview = visual.find(im => im.uri);
+      const thumb = firstWithPreview
+        ? makeArtSVG(firstWithPreview.uri, { thumb: true, partialPct: firstWithPreview.partialPct, rowsLabel: firstWithPreview.rows, size: firstWithPreview.size })
+        : (f.replay && f.replay.uri)
+          ? makeArtSVG(f.replay.uri, { thumb: true })
+          : makeNoImageThumb(f.tier);
+      const g = shownGroup(f);
+      let head = "";
+      if (g && g.id !== lastGroup) {
+        head = `
+          <div class="group-head" role="presentation" title="Canonical workflow digest ${esc(g.digest)}">
+            <span>Workflow <strong>${esc(g.leadWorkflowId || g.id)}</strong></span>
+            <span>${g.children.length} finding${g.children.length === 1 ? "" : "s"}</span>
+            ${g.replays.length ? `<span class="cmp-tag">lab replay run</span>` : ""}
+            ${g.seedXrefs.length ? `<span class="cmp-tag">seed cross-ref ${esc(g.seedXrefs.map(x => x.findingId).join(", "))}</span>` : ""}
+          </div>`;
+      }
+      lastGroup = g ? g.id : null;
+
+      return head + `
+        <button
+          class="finding-row t-${f.tier} ${isAct ? "active" : ""} ${g ? "group-member" : ""}"
+          data-id="${esc(f.id)}"
+          role="option"
+          aria-selected="${isAct}"
+        >
+          <div class="finding-thumb">${thumb}</div>
+          <div style="min-width:0">
+            <div class="finding-row-top">
+              <span class="tier-badge t-${f.tier}">${f.tier}</span>
+              <span class="finding-row-id">${esc(f.id)}</span>
+              ${hasDerived ? `<span class="row-tag derived" title="Includes a derived reconstruction (e.g. a decoded latent), not recovered as-is">DERIVED</span>` : ""}
+              ${f.replay ? `<span class="row-tag replay" title="A lab replay of this workflow is attached: generated offline, never found in memory">REPLAY</span>` : ""}
+              ${copyCount > 1 ? `<span class="finding-row-copies" title="${copyCount} recovered images">${copyCount}×</span>` : ""}
+            </div>
+            <div class="finding-row-rationale">${f.tier === "UT" && f.tierLabel ? esc(f.tierLabel) + ": " : ""}${esc(f.rationale)}</div>
+          </div>
+        </button>
+      `;
+    }).join("");
+
+    const activeRow = findingListEl.querySelector(".finding-row.active");
+    if (activeRow) {
+      activeRow.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  /* The recovered API graph, laid out in columns by dependency depth (sources left, outputs right). */
+  function renderWorkflowSVG(wf) {
+    const g = (wf && wf.graph) || {};
+    const ids = Object.keys(g).filter(k => g[k] && typeof g[k] === "object" && g[k].class_type);
+    if (!ids.length) {
+      const none = { id: "—", title: "No API graph", detail: "This workflow record has no decodable API graph." };
+      return { svg: `<div class="empty-state">No API graph to draw.</div>`, selNode: none };
+    }
+    const isLink = v => Array.isArray(v) && v.length === 2 && ids.includes(String(v[0]));
+    const edges = [];
+    ids.forEach(id => Object.entries(g[id].inputs || {}).forEach(([name, v]) => {
+      if (isLink(v)) edges.push({ from: String(v[0]), to: id, name, socket: v[1] });
+    }));
+    const depth = Object.create(null);
+    const visit = (id, seen) => {
+      if (depth[id] !== undefined) return depth[id];
+      if (seen.has(id)) return 0;  /* a cycle is drawn, not followed */
+      seen.add(id);
+      const preds = edges.filter(e => e.to === id).map(e => visit(e.from, seen) + 1);
+      seen.delete(id);
+      return (depth[id] = preds.length ? Math.max(...preds) : 0);
+    };
+    ids.forEach(id => visit(id, new Set()));
+    const byCol = {};
+    ids.forEach(id => (byCol[depth[id]] = byCol[depth[id]] || []).push(id));
+    /* Top to bottom: one row per dependency depth (ComfyUI graphs are deeper than they are wide). */
+    const W = 150, H = 40, GX = 14, GY = 28, PAD = 8;
+    const pos = Object.create(null);
+    const levels = Object.keys(byCol).map(Number).sort((a, b) => a - b);
+    const widest = Math.max(...levels.map(l => byCol[l].length));
+    const vw = PAD * 2 + widest * W + (widest - 1) * GX;
+    levels.forEach((l, li) => {
+      byCol[l].sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b));
+      const rowWidth = byCol[l].length * W + (byCol[l].length - 1) * GX;
+      const left = (vw - rowWidth) / 2;
+      byCol[l].forEach((id, i) => { pos[id] = { x: left + i * (W + GX), y: PAD + li * (H + GY) }; });
+    });
+    const vh = PAD * 2 + levels.length * H + (levels.length - 1) * GY;
+    const literal = v => typeof v === "string" ? JSON.stringify(v.length > 60 ? v.slice(0, 60) + "…" : v) : JSON.stringify(v);
+    const nodes = ids.map(id => {
+      const n = g[id], ins = Object.entries(n.inputs || {});
+      const scalars = ins.filter(([, v]) => !isLink(v) && (typeof v !== "object" || v === null));
+      const firstScalar = scalars.find(([k]) => !/text|prompt/i.test(k)) || scalars[0];
+      const title = n.class_type.length > 20 ? n.class_type.slice(0, 19) + "…" : n.class_type;
+      const sub = firstScalar ? `${id} · ${firstScalar[0]} ${String(firstScalar[1]).slice(0, 14)}` : `node ${id}`;
+      const detail = `class_type: ${n.class_type} · ` + ins.map(([k, v]) => isLink(v) ? `${k} ← [${v[0]},${v[1]}]` : `${k}: ${literal(v)}`).join(", ");
+      return { id, title, sub, detail, ...pos[id] };
+    });
+    const selNode = nodes.find(n => n.id === state.selectedNodeId)
+      || nodes.find(n => /sampler/i.test(g[n.id].class_type)) || nodes[0];
+    const paths = edges.map(e => {
+      const a = pos[e.from], b = pos[e.to];
+      const x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y, my = (y1 + y2) / 2;
+      return `<path class="wf-edge" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}" marker-end="url(#wfArrow)"><title>${esc(e.from)} → ${esc(e.to)}.${esc(e.name)}</title></path>`;
+    });
+    const svg = `
+      <svg class="graph-svg" viewBox="0 0 ${vw} ${vh}" style="width:${vw}px;max-width:100%;height:auto;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${ids.length}-node ComfyUI workflow graph">
+        <defs>
+          <marker id="wfArrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 4 L 0 7 z" fill="var(--ink-muted)"/>
+          </marker>
+        </defs>
+        ${paths.join("")}
+        ${nodes.map(n => `
+          <g class="wf-node ${n.id === selNode.id ? "selected" : ""}" data-node="${esc(n.id)}" tabindex="0" role="button" aria-label="Inspect node ${esc(n.id)}: ${esc(n.title)}">
+            <rect class="node-box" x="${n.x}" y="${n.y}" width="${W}" height="${H}" rx="5"/>
+            <text class="node-title" x="${n.x + 8}" y="${n.y + 16}">${esc(n.title)}</text>
+            <text class="node-sub" x="${n.x + 8}" y="${n.y + 31}">${esc(n.sub)}</text>
+          </g>
+        `).join("")}
+      </svg>
+    `;
+    return { svg, selNode };
+  }
+
+  /* Where an image sits in memory, without printing the same offset twice. */
+  function locationText(im) {
+    if (!present(im.process)) return present(im.offset) ? im.offset : DASH;
+    return present(im.offset) && !String(im.process).includes(im.offset) ? `${im.process} @ ${im.offset}` : im.process;
+  }
+
+  /* An image with no metadata key in a tiered E1-E3 finding was tied to the job by an image comparison. */
+  function linkedByComparison(f, im) {
+    return im.link === "UNASSOCIATED" && ["E1", "E2", "E3"].includes(f.tier);
+  }
+
+  function linkHtml(f, im) {
+    if (linkedByComparison(f, im)) return `<span class="term" title="UNASSOCIATED">No metadata link</span> (tied by image comparison; see rationale)`;
+    return termHtml(HUMAN_LINK, im.link) + (present(im.key) ? ` via ${keysHtml(im.key)}` : "");
+  }
+
+  /* Render Centre Workspace */
+  function renderCentre(list, f) {
+    if (!f) {
+      centreInnerEl.innerHTML = `<div class="card"><div class="card-body empty-state">Select a finding from the left rail to inspect evidence, workflow, and provenance.</div></div>`;
+      return;
+    }
+
+    const idx = list.findIndex(x => x.id === f.id);
+    const tierInfo = TIERS[f.tier];
+    const tierShort = f.tierLabel || tierInfo.short;
+    const tierDesc = f.tierDesc || tierInfo.desc;
+    const allImgs = f.images || [];
+    const imgs = visualImages(f);
+    const zeroRowImgs = allImgs.filter(im => im.container);
+    if (state.selectedCopyIdx >= imgs.length) state.selectedCopyIdx = 0;
+    const activeCopy = imgs[state.selectedCopyIdx] || null;
+    const r = f.replay;
+    const isRaw = !!(r && r.observation === "RAW_WHOLE_FRAME");
+
+    /* 1. Finding hero: tier, plain meaning, promotion (if any), rationale, job. */
+    const promoted = present(f.baseTier) && f.baseTier !== f.tier;
+    const promotionHtml = promoted ? `
+          <div class="promotion-callout t-${f.tier}">
+            <strong>Promoted ${esc(f.baseTier)} → ${esc(f.tier)}</strong>
+            <span>${r ? `by ${isRaw ? "the raw whole-frame match of lab replay" : "lab replay"} <span class="mono">${esc(r.id)}</span>.` : "by a later observation recorded in this case."}
+              The extraction rationale below explains the ${esc(f.baseTier)} tier the finding started from.</span>
+          </div>` : "";
+    const job = f.job || {};
+    const hasJob = [job.promptId, job.queued, job.duration, job.status].some(present);
+    const statusClass = job.status === "success" ? "status-ok" : "status-warn";
+    const jobHtml = hasJob ? `
+          <div class="job-strip">
+            ${present(job.promptId) ? `<div class="job-kv"><span class="job-k">Prompt ID</span> <span class="job-v mono">${esc(job.promptId)}</span></div>` : ""}
+            ${present(job.queued) ? `<div class="job-kv"><span class="job-k">Queued</span> <span class="job-v mono">${esc(job.queued)}</span></div>` : ""}
+            ${present(job.duration) ? `<div class="job-kv"><span class="job-k">Run</span> <span class="job-v mono">${esc(job.duration)}</span></div>` : ""}
+            ${present(job.status) ? `<div class="job-kv"><span class="job-k">Status</span> <span class="status-pill ${statusClass}">${esc(job.status)}</span></div>` : ""}
+          </div>` : "";
+    const heroHtml = `
+      <section class="card">
+        <div class="finding-hero">
+          <div class="finding-hero-top">
+            <div class="finding-title-wrap t-${f.tier}" title="${esc(f.tier + " — " + tierShort + ": " + tierDesc)}">
+              <span class="tier-badge t-${f.tier}">${f.tier}</span>
+              <span class="finding-id-lg">${esc(f.id)}</span>
+              <span class="finding-tier-name">${esc(tierShort)}</span>
+              ${activeCopy && activeCopy.derived ? `<span class="derived-badge" title="Reconstructed from recovered data (e.g. a decoded latent), not recovered as-is">◈ DERIVED</span>` : ""}
+              ${r && !activeCopy ? `<span class="replay-badge" title="Generated in the lab by replaying the recovered workflow; not found in memory">↻ LAB REPLAY</span>` : ""}
+            </div>
+            <div class="nav-pager">
+              <button class="btn btn-sm btn-icon" id="prevFindingBtn" ${idx <= 0 ? "disabled" : ""} title="Previous finding (↑)" aria-label="Previous finding">‹</button>
+              <span class="pager-text">${idx + 1} of ${list.length}</span>
+              <button class="btn btn-sm btn-icon" id="nextFindingBtn" ${idx >= list.length - 1 ? "disabled" : ""} title="Next finding (↓)" aria-label="Next finding">›</button>
+            </div>
+          </div>
+          <p class="tier-desc">${esc(tierDesc)}</p>
+          ${promotionHtml}
+          <p class="rationale-text">${promoted ? `<span class="rationale-label">Extraction rationale (as ${esc(f.baseTier)})</span>` : ""}${annotateTokens(esc(f.rationale))}</p>
+          ${jobHtml}
+        </div>
+      </section>
+    `;
+
+    /* 2. Image Evidence: only when there is something to look at or account for. */
+    let imageCardHtml = "";
+    if (imgs.length > 0 || r || zeroRowImgs.length > 0) {
+      const thumbsHtml = imgs.length > 1 ? `
+        <div class="copy-strip" role="tablist" aria-label="Recovered images">
+          ${imgs.map((im, i) => `
+            <button class="copy-card ${i === state.selectedCopyIdx ? "active" : ""}" data-copy-idx="${i}" role="tab" aria-selected="${i === state.selectedCopyIdx}">
+              <div class="copy-thumb">${makeArtSVG(im.uri, { thumb: true, partialPct: im.partialPct, rowsLabel: im.rows, size: im.size, omitted: im.omitted })}</div>
+              <div class="copy-meta">
+                <div class="copy-id-row">
+                  <span class="copy-id" title="${esc(im.id)}">${esc(im.id)}</span>
+                </div>
+                <div class="copy-kind">${esc(im.kind)}</div>
+                <div class="copy-tags">
+                  <span>${esc(im.rows || (im.completeness === "COMPLETE" ? "complete" : "partial"))}</span>
+                  ${im.derived ? `<span class="derived-badge" style="padding:0 4px;font-size:9px">◈ DERIVED</span>` : `<span title="${esc(im.link)}">· ${esc(linkedByComparison(f, im) ? "tied by comparison" : human(HUMAN_LINK, im.link).toLowerCase())}</span>`}
+                  ${im.comparison ? `<span class="cmp-tag ${cmpClass(im.comparison.status)}" title="${esc(im.comparison.status + ": " + im.comparison.label)}">${esc(humanStatus(im.comparison.status).toLowerCase())}</span>` : ""}
+                </div>
+              </div>
+            </button>
+          `).join("")}
+        </div>
+      ` : "";
+
+      const sel = r && r.targetSelection;
+      const selectionHtml = sel ? `
+              <li><strong>Target selection:</strong> ${termHtml(HUMAN_SEL_REASON, sel.selection_reason)}${(sel.candidate_artifact_ids || []).length ? ` · candidates <span class="mono">${esc(sel.candidate_artifact_ids.join(", "))}</span>` : ""}${(sel.excluded_candidates || []).length ? ` · excluded ${sel.excluded_candidates.map(x => `<span class="mono">${esc(x.artifact_id)}</span> (${termHtml(HUMAN_SEL_REASON, x.reason)})`).join(", ")}` : ""}</li>` : "";
+      const boxes = f.containerProvenance || [];
+      const boxesHtml = (zeroRowImgs.length || boxes.length) ? `
+        <details class="raw-json" style="margin:10px 0 0">
+          <summary>Container provenance (${zeroRowImgs.length + boxes.length} header-only PNG container${zeroRowImgs.length + boxes.length === 1 ? "" : "s"}: 0 pixel rows, not output images)</summary>
+          <ul class="group-facts" style="margin:6px 0 2px">
+            ${zeroRowImgs.map(im => `<li><span class="mono">${esc(im.id)}</span>: ${esc(im.rows || im.completeness)} decoded · <span class="mono">${esc(locationText(im))}</span> · ${linkHtml(f, im)}</li>`).join("")}
+            ${boxes.map(c => `<li><span class="mono">${esc(c.artifactId)}</span>: ${esc(c.rows)} decoded, from ${esc(c.fromFinding)}${c.linkIds.length ? ` via <span class="mono">${esc(c.linkIds.join(", "))}</span>` : ""}</li>`).join("")}
+          </ul>
+        </details>` : "";
+      /* Every replay result shown beside an image is that image's own: an untested sibling says "not compared". */
+      const testedHere = r && r.scope === "TESTED" && (!activeCopy || activeCopy.id === r.testedArtifact);
+      const scopedResult = !r ? "" : testedHere ? r.comparisonStatus
+        : activeCopy ? `not compared with ${activeCopy.id}` : r.comparisonStatus;
+      const ssimText = r && r.ssim ? " · SSIM " + esc(r.ssim) : "";
+      let replayPill = "";
+      if (r) {
+        const raw = esc(r.comparisonStatus);
+        if (testedHere || (isRaw && !activeCopy)) {
+          replayPill = r.match
+            ? `<span class="status-pill status-ok" title="${raw}">${esc(humanStatus(r.comparisonStatus))}${ssimText}</span>`
+            : `<span class="status-pill ${r.comparisonStatus === "NON_MATCHING" ? "status-warn" : "status-neutral"}" title="${raw}">${esc(humanStatus(r.comparisonStatus))}${ssimText}</span>`;
+        } else if (r.scope === "NO_TARGET" || r.comparisonStatus === "NO_MEMORY_TARGET") {
+          replayPill = `<span class="status-pill status-neutral" title="${raw}">${esc(humanStatus("NO_MEMORY_TARGET"))}</span>`;
+        } else if (activeCopy) {
+          replayPill = `<span class="status-pill status-warn" title="The replay compared ${esc(r.testedArtifact || "another artifact")}">Not compared with ${esc(activeCopy.id)}</span>`;
+        } else {
+          replayPill = `<span class="status-pill status-neutral" title="${raw}">Not compared (replay tested ${esc(r.testedArtifact || "another artifact")})</span>`;
+        }
+      }
+      const compareHeadHtml = r ? `
+        <div class="compare-head">
+          <div class="compare-head-top">
+            <strong>${isRaw ? "Raw whole-frame match" : "Lab replay"} <span class="mono">${esc(r.id)}</span></strong>
+            ${replayPill}
+            ${r.rows ? `<span class="chip mono" title="Rows compared">${esc(r.rows)}</span>` : ""}
+            ${r.promoted ? `<span class="status-pill status-ok">tier raised</span>` : ""}
+          </div>
+          <details class="raw-json" style="margin:0;border:none;background:transparent">
+            <summary style="padding:2px 0;font-size:11px;color:var(--ink-muted)">Replay details${r.recordedVerdict ? ` (recorded verdict ${esc(r.recordedVerdict)})` : ""}</summary>
+            <ul class="group-facts" style="margin:4px 0 0">
+              <li><strong>Execution:</strong> ${esc(r.execution)}</li>
+              <li><strong>Comparison:</strong> ${esc(r.summary)} <span class="mono" style="color:var(--ink-muted)">[${esc(r.comparisonStatus)}]</span></li>
+              <li><strong>Promotion:</strong> ${esc(r.promotion)}</li>
+              ${selectionHtml}
+              ${(r.others || []).map(o => `<li><strong>${esc(o.id)}${o.observation === "RAW_WHOLE_FRAME" ? " (raw whole frame)" : ""}:</strong> ${esc(o.summary)}; ${esc(o.promotion)}</li>`).join("")}
+            </ul>
+          </details>
+        </div>
+      ` : "";
+
+      /* Both replay hashes on their own lines: the regenerated pixels, and the derived PNG file on disk. */
+      const replayHashes = r ? `
+                <div class="hash-rows">
+                  ${hashRow("Pixel SHA-256", r.derivedPixelSha256, 16, "unavailable (replay image not verified)",
+                    r.derivedPixelSha256 && activeCopy && r.derivedPixelSha256 === activeCopy.pixelSha256 ? `<span class="same-badge">✓ identical to recovered pixels</span>` : "")}
+                  ${hashRow("Derived file SHA-256", r.derivedFileSha256, 16, "not recorded")}
+                </div>` : "";
+      const recoveredHash = im => hashRow("Decoded pixels SHA-256", im.pixelSha256, 16,
+        im.completeness === "COMPLETE" ? "not recorded" : "unavailable (partial image)");
+      const artOpts = im => ({ partialPct: im.partialPct, rowsLabel: im.rows, size: im.size, omitted: im.omitted, alt: im.id });
+
+      let stageHtml = "";
+      if (activeCopy && r) {
+        /* Side-by-side Recovered vs Replayed. The comparison is the tested artifact's only. */
+        stageHtml = `
+          <div class="image-stage side-by-side">
+            <div class="image-pane">
+              <div class="image-pane-head">
+                <strong>Recovered from RAM · <span class="mono">${esc(activeCopy.id)}</span></strong>
+                <span class="mono" style="color:var(--ink-muted)">${esc(activeCopy.size)}</span>
+              </div>
+              <div class="image-frame">
+                ${makeArtSVG(activeCopy.uri, artOpts(activeCopy))}
+              </div>
+              ${activeCopy.previewNote ? `<p class="status-warn" style="margin:0;padding:4px 10px">${esc(activeCopy.previewNote)}</p>` : ""}
+              <div class="image-pane-foot">
+                <span>${esc(activeCopy.kind)} (${esc(activeCopy.rows || activeCopy.completeness.toLowerCase())})</span>
+                ${recoveredHash(activeCopy)}
+              </div>
+            </div>
+            <div class="image-pane">
+              <div class="image-pane-head">
+                <strong>Lab replay of <span class="mono">${esc(r.workflowId)}</span> · <span class="mono">${esc(r.id)}</span></strong>
+                <span class="replay-badge" title="Regenerated offline from the recovered workflow; never found in memory">↻ LAB REPLAY</span>
+              </div>
+              <div class="image-frame">
+                ${makeArtSVG(r.uri, { omitted: r.omitted, alt: r.id })}
+              </div>
+              <div class="image-pane-foot">
+                <span title="${esc(scopedResult)}">${esc(humanStatus(scopedResult))}${r.exact && testedHere ? " · identical pixels" : ""}</span>
+                ${replayHashes}
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (!activeCopy && r) {
+        /* E4 or a raw-frame match: no drawable memory image beside the replayed image. */
+        const zeroNote = zeroRowImgs.length
+          ? `<strong style="display:block;color:var(--ink);margin-bottom:4px;">0 pixel rows recovered in RAM</strong>
+                  ${zeroRowImgs.length} torn PNG header${zeroRowImgs.length === 1 ? "" : "s"} only (they carry the prompt, not the picture); see container provenance below.`
+          : `<strong style="display:block;color:var(--ink);margin-bottom:4px;">No image recovered in memory</strong>
+                  No copy of this job's output was found in the memory image.`;
+        stageHtml = `
+          <div class="image-stage side-by-side">
+            <div class="image-pane">
+              <div class="image-pane-head">
+                <strong>${isRaw ? "Recovered frame (no preview)" : "Recovered from RAM"}</strong>
+                <span class="mono" style="color:var(--ink-muted)">${isRaw ? "raw dump · packed pixels" : (zeroRowImgs.length ? "header only" : "none")}</span>
+              </div>
+              <div class="image-frame" style="padding:20px;text-align:center;">
+                <div style="color:var(--ink-muted);font-size:12px;">
+                  ${isRaw && r.rawFrame ? `
+                  <strong style="display:block;color:var(--ink);margin-bottom:4px;">Raw memory frame (packed pixels, no preview)</strong>
+                  <span class="mono">${esc(r.rawFrame.raw_file)}</span><br>raw SHA-256 <span class="mono">${esc(shortHash(r.rawFrame.raw_sha256, 16))}</span>` : zeroNote}
+                </div>
+              </div>
+              <div class="image-pane-foot">${isRaw ? `<span>Whole frame in the raw dump</span><span title="${esc(r.comparisonStatus)}">${esc(humanStatus(r.comparisonStatus))}</span>` : `<span>${zeroRowImgs.length ? "No pixels to compare with the replay" : "Memory image absent"}</span>`}</div>
+            </div>
+            <div class="image-pane">
+              <div class="image-pane-head">
+                <strong>Replayed output · <span class="mono">${esc(r.id)}</span></strong>
+                <span class="replay-badge" title="Regenerated offline from the recovered workflow; never found in memory">↻ LAB REPLAY</span>
+              </div>
+              <div class="image-frame">
+                ${makeArtSVG(r.uri, { omitted: r.omitted, alt: r.id })}
+              </div>
+              <div class="image-pane-foot">
+                <span>Generated offline from ${esc(r.workflowId)}</span>
+                ${replayHashes}
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (activeCopy) {
+        /* Single recovered image view */
+        stageHtml = `
+          <div class="image-stage">
+            <div class="image-pane">
+              <div class="image-pane-head">
+                <div>
+                  <strong>${esc(activeCopy.id)}</strong> · ${esc(activeCopy.kind)}
+                  ${activeCopy.derived ? `<span class="derived-badge" style="margin-left:6px">◈ DERIVED</span>` : ""}
+                </div>
+                <span class="mono" style="color:var(--ink-muted)">${esc(activeCopy.size)} · ${esc(activeCopy.rows || activeCopy.completeness.toLowerCase())}</span>
+              </div>
+              <div class="image-frame">
+                ${makeArtSVG(activeCopy.uri, artOpts(activeCopy))}
+              </div>
+              ${activeCopy.previewNote ? `<p class="status-warn" style="margin:0;padding:4px 10px">${esc(activeCopy.previewNote)}</p>` : ""}
+              <div class="image-pane-foot">
+                ${recoveredHash(activeCopy)}
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        stageHtml = `
+          <div class="note-callout" style="margin-top:0">
+            <strong>0 pixel rows recovered in RAM.</strong> ${zeroRowImgs.length} torn PNG header${zeroRowImgs.length === 1 ? "" : "s"} only: they carry the prompt, not the picture.
+          </div>`;
+      }
+
+      const artifactMetaHtml = activeCopy ? `
+        <div class="artifact-caption">
+          <span><span class="k">Found</span>${esc(activeCopy.source)}</span>
+          <span><span class="k">At</span><span class="mono">${esc(locationText(activeCopy))}</span></span>
+          <span><span class="k">Link</span>${linkHtml(f, activeCopy)}</span>
+          ${hashRow("Recovered file SHA-256", activeCopy.containerSha256, 20, "unavailable (incomplete stream or raw tensor)")}
+        </div>
+        ${activeCopy.derived ? `<div class="derived-callout"><strong>◈ Derived reconstruction.</strong> ${esc(activeCopy.derivedNote || "Reconstructed from recovered data, not recovered as-is.")}</div>` : ""}
+      ` : "";
+
+      const countChip = [
+        imgs.length ? `${imgs.length} recovered image${imgs.length === 1 ? "" : "s"}` : "no drawable image",
+        zeroRowImgs.length ? `${zeroRowImgs.length} header-only` : "",
+        r ? "lab replay" : ""
+      ].filter(Boolean).join(" + ");
+      imageCardHtml = `
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span>Image Evidence</span>
+              <span class="chip mono">${esc(countChip)}</span>
+            </div>
+            ${activeCopy && activeCopy.file ? `<button class="btn btn-sm" id="inlineExpImgBtn" title="Open the recovered bytes of ${esc(activeCopy.id)} from the case folder">Export image file</button>` : ""}
+          </div>
+          <div class="card-body">
+            ${thumbsHtml}
+            ${compareHeadHtml}
+            ${stageHtml}
+            ${artifactMetaHtml}
+            ${boxesHtml}
+          </div>
+        </section>
+      `;
+    }
+
+    /* 3. Workflow Section (SVG node graph + key parameters, side by side on wide screens) */
+    let wfCardHtml = "";
+    if (f.workflow) {
+      const wf = f.workflow;
+      const p = wf.params;
+      const hasGraph = Object.keys(wf.graph || {}).length > 0;
+      const { svg, selNode } = hasGraph ? renderWorkflowSVG(wf) : { svg: "", selNode: null };
+      const apiJson = hasGraph ? JSON.stringify(wf.graph, null, 2) : "";
+      const activeWfCopy = state.selectedWfCopyIdx !== null ? wf.copies[state.selectedWfCopyIdx] : null;
+      const val = v => present(v) ? esc(v) : `<span style="color:var(--ink-muted)">not recovered</span>`;
+      const joined = (parts) => { const got = parts.filter(([v]) => present(v)).map(([v, fmt]) => fmt(v)); return got.length ? esc(got.join(" · ")) : val(DASH); };
+      const stepsCfg = joined([[p.steps, v => `${v} steps`], [p.cfg, v => `CFG ${v}`]]);
+      const sampler = joined([[p.sampler, v => v], [p.scheduler, v => v]]);
+      const resolution = present(p.width) && present(p.height) ? esc(`${p.width}×${p.height}`) : val(DASH);
+      const promptBox = (label, text) => `
+                <div class="prompt-box">
+                  <div class="prompt-head">
+                    <span>${label}</span>
+                    ${present(text) ? `<button class="copy-btn" data-copy="${esc(text)}">Copy</button>` : ""}
+                  </div>
+                  <p class="prompt-text">${val(text)}</p>
+                </div>`;
+      const sameGraph = wf.copies.length > 0 && wf.copies.every(c => c.sha256 === wf.sha256);
+      const shownCopies = state.showAllWfCopies ? wf.copies : wf.copies.slice(0, WF_COPIES_SHOWN);
+      const copiesHtml = wf.copies.length ? `
+            <div class="wf-copies-bar">
+              <span style="font-size:11.5px;color:var(--ink-muted)" title="${sameGraph ? "Records with the same canonical graph hash as the lead record" : "Other workflow records in this finding; their graph hashes differ from the lead record"}">${sameGraph ? "Byte-distinct copies of this graph" : "Other workflow records in this finding"} (${wf.copies.length}):</span>
+              <div class="copy-pills">
+                ${shownCopies.map((c, i) => `
+                  <button class="wf-copy-pill ${state.selectedWfCopyIdx === i ? "active" : ""}" data-wfcopy="${i}" title="${esc(c.source)}" aria-pressed="${state.selectedWfCopyIdx === i}">
+                    ${esc(c.id)}
+                  </button>
+                `).join("")}
+                ${wf.copies.length > WF_COPIES_SHOWN ? `<button class="link-btn" data-wfcopies-toggle="1" style="font-size:11px">${state.showAllWfCopies ? "Show fewer" : `Show all ${wf.copies.length} records`}</button>` : ""}
+              </div>
+            </div>
+            <div class="wf-copy-detail ${activeWfCopy ? "open" : ""}">
+              ${activeWfCopy ? `<strong>${esc(activeWfCopy.id)}</strong> — ${esc(activeWfCopy.source)} · SHA-256 <span class="mono">${esc(activeWfCopy.sha256)}</span>` : ""}
+            </div>` : "";
+
+      wfCardHtml = `
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span>Workflow</span>
+              <span class="chip mono">${esc(wf.id)} · ${esc(wf.format)}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11.5px;color:var(--ink-muted)">${esc(capitalize(wf.source))}</span>
+              ${hasGraph ? `<button class="btn btn-sm" id="inlineExpWfBtn">Export API JSON</button>` : ""}
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="workflow-layout ${hasGraph ? "has-graph" : ""}">
+              ${hasGraph ? `
+              <div class="graph-panel">
+                <div class="graph-bar">
+                  <span>Node graph (${Object.keys(wf.graph).length} nodes)</span>
+                  <span>Click or press Enter on a node to inspect it</span>
+                </div>
+                <div class="graph-svg-wrap">${svg}</div>
+                <div class="node-inspector" aria-live="polite">
+                  <div class="node-inspector-title">Node #${esc(selNode.id)} · ${esc(selNode.title)}</div>
+                  <div class="node-inspector-kv">${esc(selNode.detail)}</div>
+                </div>
+              </div>` : ""}
+
+              <div class="params-panel">
+                ${hasGraph ? "" : `<div class="note-callout" style="margin-top:0">No verified API graph to draw for this ${esc(wf.format)} record; the parameters below are what was recovered.</div>`}
+                <table class="param-table">
+                  <tr><th>Checkpoint</th><td class="mono">${val(p.checkpoint)}</td></tr>
+                  <tr><th>Seed</th><td class="mono">${val(p.seed)}</td></tr>
+                  <tr><th>Steps / CFG</th><td class="mono">${stepsCfg}</td></tr>
+                  <tr><th>Sampler</th><td class="mono">${sampler}</td></tr>
+                  <tr><th>Resolution</th><td class="mono">${resolution}</td></tr>
+                </table>
+                ${promptBox("Positive prompt", p.positive)}
+                ${promptBox("Negative prompt", p.negative)}
+              </div>
+            </div>
+            ${copiesHtml}
+            ${hasGraph ? `
+            <details class="raw-json">
+              <summary>Inspect raw API graph JSON (${esc(wf.id)})</summary>
+              <pre>${esc(apiJson)}</pre>
+            </details>` : ""}
+          </div>
+        </section>
+      `;
+    }
+
+    /* 4. Workflow group: only when several findings share the graph or a seed cross-reference points here. */
+    let groupCardHtml = "";
+    const grp = shownGroup(f);
+    if (grp) {
+      const childRows = grp.children.map(c => {
+        const full = BY_ID[c.id];
+        const ims = (full && full.images) || [];
+        const artRows = ims.length ? ims : [null];
+        return artRows.map((im, i) => {
+          const cmp = im && im.comparison;
+          const cmpLabel = (c.comparisons || {})[im ? im.id : ""] || "not compared";
+          const cmpBadge = !im ? "—"
+            : cmp ? `<span class="cmp-tag ${cmpClass(cmp.status)}" title="${esc(cmp.status + ": " + cmp.label)}">${esc(humanStatus(cmp.status).toLowerCase())}</span>`
+            : `<span class="cmp-tag" title="${esc(cmpLabel)}">not compared</span>`;
+          return `
+          <tr class="${c.id === f.id ? "current" : ""}">
+            ${i === 0 ? `<td rowspan="${artRows.length}"><button class="link-btn" data-select="${esc(c.id)}">${esc(c.id)}</button></td>
+                         <td rowspan="${artRows.length}"><span class="tier-badge t-${esc(c.tier)}">${esc(c.tier)}</span></td>` : ""}
+            <td class="mono">${im ? esc(im.id) : "—"}</td>
+            <td class="mono">${im ? esc(im.rows || im.completeness.toLowerCase()) : "—"}</td>
+            <td>${cmpBadge}</td>
+          </tr>`;
+        }).join("");
+      }).join("");
+      const subChip = grp.submissions.promptIds.length
+        ? `<span class="chip mono" title="${esc(grp.submissions.note)}">Prompt IDs: ${esc(grp.submissions.promptIds.join(", "))}</span>`
+        : `<span class="chip" title="${esc(grp.submissions.note)}">Unbound copies</span>`;
+      const replayChips = grp.replays.length
+        ? grp.replays.map(rp => `<span class="cmp-tag ${cmpClass(rp.comparisonStatus)}" title="${esc(rp.comparisonStatus + ": " + rp.comparison)}">${esc(rp.id)} · ${esc(humanStatus(rp.comparisonStatus).toLowerCase())}</span>`).join(" ")
+        : `<span class="chip">No lab replay</span>`;
+      const xrefChips = grp.seedXrefs.length
+        ? grp.seedXrefs.map(x => `<button class="link-btn" data-select="${esc(x.findingId)}" title="${esc(x.note)}" style="font-size:11px">Seed match: ${esc(x.findingId)} (${esc(x.tier)})</button>`).join(" ")
+        : "";
+      groupCardHtml = `
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span>Workflow group</span>
+              <span class="chip mono" title="${esc(grp.digest)}">${esc(grp.leadWorkflowId || "—")}</span>
+              ${subChip}
+              ${replayChips}
+            </div>
+            <span style="font-size:11.5px;color:var(--ink-muted)">${grp.children.length} finding${grp.children.length === 1 ? "" : "s"} · ${grp.copies.length} graph cop${grp.copies.length === 1 ? "y" : "ies"}</span>
+          </div>
+          <div class="card-body">
+            ${xrefChips ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:11.5px;color:var(--ink-muted)"><span>Related E6 fragments:</span> ${xrefChips}</div>` : ""}
+            <table class="group-table">
+              <thead><tr><th>Finding</th><th>Tier</th><th>Artifact</th><th>Coverage</th><th>Replay</th></tr></thead>
+              <tbody>${childRows}</tbody>
+            </table>
+            ${grp.replays.length ? `
+            <details class="raw-json" style="margin-top:8px">
+              <summary>Replay &amp; audit details (${grp.replays.length})</summary>
+              <ul class="group-facts" style="margin:6px 0 2px">${grp.replays.map(rp => `
+                <li><strong class="mono">${esc(rp.id)}</strong>${rp.observation === "RAW_WHOLE_FRAME" ? " (raw whole-frame match)" : ""}: ${esc(rp.execution)}.
+                  Tested: ${rp.testedArtifact ? `<span class="mono">${esc(rp.testedArtifact)}</span>${rp.testedFinding ? ` (${esc(rp.testedFinding)})` : ""}` : "none"} · <span class="cmp-tag ${cmpClass(rp.comparisonStatus)}" title="${esc(rp.comparisonStatus)}">${esc(humanStatus(rp.comparisonStatus))}</span>${rp.recordedVerdict ? ` (recorded verdict ${esc(rp.recordedVerdict)})` : ""} ${esc(rp.comparison)}.
+                  ${rp.appliedTo ? `This observation applied to ${esc(rp.appliedTo)}.` : "This observation applied to no finding."}</li>`).join("")}</ul>
+            </details>` : ""}
+          </div>
+        </section>
+      `;
+    }
+
+    centreInnerEl.innerHTML = heroHtml + imageCardHtml + wfCardHtml + groupCardHtml;
+
+    /* Update export menu states */
+    expImageEl.disabled = !activeCopy;
+    expImageSubEl.textContent = activeCopy ? `Download ${activeCopy.id} (${activeCopy.kind})` : "No recovered image on this finding";
+    const hasWfGraph = Object.keys(f.workflow?.graph || {}).length > 0;
+    expWorkflowEl.disabled = !hasWfGraph;
+    expWorkflowSubEl.textContent = hasWfGraph ? `Download ${f.workflow.id} API graph JSON`
+      : (f.workflow ? "No verified API graph available" : "No workflow linked");
+  }
+
+  /* Render Right Panel: Top-to-Bottom Provenance Chain */
+  function renderProvenance(f) {
+    if (!f) {
+      provContainerEl.innerHTML = `<div class="empty-state">No finding selected.</div>`;
+      return;
+    }
+
+    const imgs = visualImages(f);
+    const zeroRowImgs = (f.images || []).filter(im => im.container);
+    const activeCopy = imgs[state.selectedCopyIdx] || null;
+    const modeText = human(HUMAN_MODE, CASE_META.mode);
+    const lines = (...xs) => xs.filter(Boolean).join("\n");
+    provCopyTagEl.textContent = activeCopy ? `${f.id} · ${activeCopy.id}` : f.id;
+
+    /* 2. Where the evidence was read: the image's location, else the workflow record's origin. */
+    let step2;
+    if (activeCopy) {
+      const loc = locationText(activeCopy);
+      step2 = { state: "verified", id: loc, hashes: [], fullCopy: loc, sub: activeCopy.source };
+    } else if (f.workflow) {
+      step2 = {
+        state: "verified",
+        id: capitalize(f.workflow.source),
+        hashes: [CASE_META.mode === "PHYSICAL_FALLBACK" ? "Physical page scan" : "Recovered workflow record"],
+        fullCopy: `${f.workflow.id}: ${f.workflow.source}`,
+        sub: modeText
+      };
+    } else {
+      step2 = { state: "absent", id: "No memory source", hashes: [], fullCopy: "No memory source", sub: "" };
+    }
+
+    /* 3. The image artifact and its hashes; a missing hash says why, never "null". */
+    let step3;
+    if (activeCopy) {
+      const partial = activeCopy.completeness !== "COMPLETE";
+      step3 = {
+        state: activeCopy.derived ? "derived" : "verified",
+        id: `${activeCopy.id} (${activeCopy.rows || activeCopy.completeness.toLowerCase()})`,
+        hashes: [
+          activeCopy.pixelSha256 ? "Pixels " + shortHash(activeCopy.pixelSha256, 20)
+            : (partial ? "Partial stream (no whole-image pixel hash)" : "No pixel hash recorded"),
+          activeCopy.containerSha256 ? "File " + shortHash(activeCopy.containerSha256, 20) : ""
+        ].filter(Boolean),
+        fullCopy: lines(activeCopy.id,
+          activeCopy.pixelSha256 && `Pixel SHA-256: ${activeCopy.pixelSha256}`,
+          activeCopy.containerSha256 && `Container SHA-256: ${activeCopy.containerSha256}`),
+        sub: [activeCopy.kind, present(activeCopy.size) ? activeCopy.size : "", activeCopy.derived ? "DERIVED" : ""].filter(Boolean).join(" · ")
+      };
+    } else if (zeroRowImgs.length) {
+      step3 = {
+        state: "absent",
+        id: `${zeroRowImgs.length} header-only PNG container${zeroRowImgs.length === 1 ? "" : "s"}`,
+        hashes: [],
+        fullCopy: zeroRowImgs.map(im => `${im.id} (${im.rows || im.completeness})`).join("\n"),
+        sub: "0 pixel rows recovered in RAM"
+      };
+    } else {
+      step3 = { state: "absent", id: "No image artifact", hashes: [], fullCopy: "No image artifact", sub: "Not recovered in RAM" };
+    }
+
+    /* 4. The link: verified only for a metadata-key link, never for an unlinked or ambiguous image. */
+    let step4;
+    if (activeCopy) {
+      const linked = !["AMBIGUOUS", "UNASSOCIATED", "NONE", DASH].includes(activeCopy.link);
+      const byComparison = linkedByComparison(f, activeCopy);
+      step4 = {
+        state: linked ? "verified" : byComparison ? "derived" : "absent",
+        id: linked ? `${human(HUMAN_LINK, activeCopy.link)}${present(activeCopy.key) ? " · " + humanKeys(activeCopy.key) : ""}`
+          : human(HUMAN_LINK, activeCopy.link),
+        hashes: present(activeCopy.linkDigest) ? [activeCopy.linkDigest] : [],
+        fullCopy: [activeCopy.link, present(activeCopy.key) ? activeCopy.key : "", present(activeCopy.linkDigest) ? activeCopy.linkDigest : ""].filter(Boolean).join(" "),
+        sub: linked ? "A metadata key binds this image to the workflow"
+          : byComparison ? "No metadata key link; tied to the job by image comparison (see rationale)"
+          : activeCopy.link === "AMBIGUOUS" ? "Several workflows could match this image" : "No metadata key link"
+      };
+    } else {
+      step4 = { state: "absent", id: "Unlinked", hashes: [], fullCopy: "No image-to-workflow link", sub: "No image-to-workflow link" };
+    }
+
+    const wf = f.workflow;
+    const job = f.job || {};
+    const hasJob = [job.promptId, job.queued, job.status].some(present);
+    const r = f.replay;
+    const steps = [
+      {
+        role: "1. Dump",
+        state: "verified",
+        id: CASE_META.dumpName,
+        hashes: ["SHA-256 " + shortHash(CASE_META.dumpSha256, 20)],
+        fullCopy: `${CASE_META.dumpName}\nSHA-256: ${CASE_META.dumpSha256}`,
+        sub: `${CASE_META.dumpSize} · ${modeText}`,
+        subTitle: CASE_META.mode
+      },
+      { role: "2. Process / Page", ...step2 },
+      { role: "3. Artifact", ...step3 },
+      { role: "4. Link Key", ...step4 },
+      {
+        role: "5. Workflow",
+        state: wf ? "verified" : "absent",
+        id: wf ? `${wf.id} (${wf.format})` : "No workflow",
+        hashes: wf ? ["SHA-256 " + shortHash(wf.sha256, 20)] : [],
+        fullCopy: wf ? `${wf.id}\nSHA-256: ${wf.sha256}` : "No workflow",
+        sub: wf ? [present(wf.params.seed) ? `Seed ${wf.params.seed}` : "",
+                   wf.copies.length ? `${wf.copies.length} other record${wf.copies.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ") : "None"
+      },
+      {
+        role: "6. Job",
+        state: job.status === "success" ? "verified" : "absent",
+        id: present(job.promptId) ? job.promptId : "No job record recovered",
+        hashes: present(job.queued) ? [`Queued ${job.queued}${present(job.duration) ? ` · ran ${job.duration}` : ""}`] : [],
+        fullCopy: hasJob ? lines(present(job.promptId) && `Prompt ID: ${job.promptId}`, present(job.queued) && `Queued: ${job.queued}`,
+          present(job.duration) && `Duration: ${job.duration}`, present(job.status) && `Status: ${job.status}`) : "No job record recovered",
+        sub: present(job.status) ? `Status: ${job.status}` : (hasJob ? "" : "No prompt ID, queue time or outcome in memory")
+      },
+      {
+        role: "7. Lab replay",
+        state: r ? (r.exact ? "verified" : "derived") : "absent",
+        id: r ? `${r.id} · ${humanStatus(r.comparisonStatus)}` : "Not replayed",
+        hashes: r ? [
+          "Pixel SHA-256 " + (r.derivedPixelSha256 ? shortHash(r.derivedPixelSha256, 16) : "unavailable"),
+          "Derived file SHA-256 " + shortHash(r.derivedFileSha256, 16)
+        ] : [],
+        fullCopy: r ? lines(r.id, `Execution: ${r.execution}`, `Comparison: ${r.summary} [${r.comparisonStatus}]`, `Promotion: ${r.promotion}`,
+          r.derivedPixelSha256 && `Pixel SHA-256: ${r.derivedPixelSha256}`, `Derived file SHA-256: ${r.derivedFileSha256}`) : "Not replayed",
+        sub: r ? `${r.summary} · ${r.promotion}` : "No verified lab replay of this workflow"
+      }
+    ];
+
+    provContainerEl.innerHTML = `
+      <div class="chain">
+        ${steps.map(s => `
+          <div class="chain-step ${s.state}">
+            <span class="chain-dot" aria-hidden="true"></span>
+            <div class="chain-card">
+              <div class="chain-top">
+                <span class="chain-role">${esc(s.role)}</span>
+                <button class="copy-btn" data-copy="${esc(s.fullCopy)}" title="Copy ID and hash">Copy</button>
+              </div>
+              <div class="chain-id">${esc(s.id)}</div>
+              ${(s.hashes || []).map(h => `<div class="chain-hash" title="${esc(s.fullCopy)}">${esc(h)}</div>`).join("")}
+              ${s.sub ? `<div class="chain-sub"${s.subTitle ? ` title="${esc(s.subTitle)}"` : ""}>${esc(s.sub)}</div>` : ""}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  /* Master Render */
+  function render() {
+    const list = getFilteredFindings();
+    const active = getActiveFinding(list);
+    renderTierStack();
+    renderFindingList(list, active);
+    renderCentre(list, active);
+    renderProvenance(active);
+    searchClearEl.classList.toggle("visible", state.search.length > 0);
+  }
+
+  /* Navigation Helpers */
+  function selectFinding(id) {
+    state.selectedId = id;
+    state.selectedCopyIdx = 0;
+    state.selectedWfCopyIdx = null;
+    state.showAllWfCopies = false;
+    render();
+  }
+
+  /* Opens a finding named inside the centre (a group's child or cross-reference), clearing filters that hide it. */
+  function jumpTo(id) {
+    const f = BY_ID[id];
+    if (!f) { showToast(id + " is not listed on this page; see manifest.json"); return; }
+    if (f.tier === "UT") state.showUntiered = true;
+    if (!getFilteredFindings().some(x => x.id === id)) {
+      state.tierFilter = "ALL";
+      state.search = "";
+      searchInputEl.value = "";
+    }
+    selectFinding(id);
+  }
+
+  function stepFinding(delta) {
+    const list = getFilteredFindings();
+    if (list.length === 0) return;
+    const idx = list.findIndex(x => x.id === state.selectedId);
+    const next = Math.max(0, Math.min(list.length - 1, idx + delta));
+    if (next !== idx) {
+      selectFinding(list[next].id);
+    }
+  }
+
+  function setTierFilter(tier) {
+    state.tierFilter = (state.tierFilter === tier && tier !== "ALL") ? "ALL" : tier;
+    if (state.tierFilter === "UT") state.showUntiered = true;
+    state.selectedCopyIdx = 0;
+    state.selectedWfCopyIdx = null;
+    const list = getFilteredFindings();
+    if (list.length > 0 && !list.some(x => x.id === state.selectedId)) {
+      state.selectedId = list[0].id;
+    }
+    render();
+  }
+
+  /* Export Handlers */
+  function exportCurrentImage() {
+    const f = getActiveFinding(getFilteredFindings());
+    const im = visualImages(f)[state.selectedCopyIdx];
+    if (!im) return;
+    if (!im.file) { showToast("No exported file is recorded for " + im.id); return; }
+    /* The raw bytes stay in the case folder; this links to them (relative to this report) rather than copying. */
+    const a = document.createElement("a");
+    a.href = im.file;
+    a.download = im.file.split("/").pop();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast("Opening " + im.file);
+  }
+
+  function exportCurrentWorkflow() {
+    const f = getActiveFinding(getFilteredFindings());
+    if (!Object.keys(f?.workflow?.graph || {}).length) return;
+    const payload = JSON.stringify(buildApiWorkflowJson(f.workflow), null, 2);
+    downloadBlob(`${f.id}_${f.workflow.id}.json`, payload, "application/json");
+  }
+
+  function exportCurrentBundle() {
+    const f = getActiveFinding(getFilteredFindings());
+    if (!f) return;
+    const bundle = {
+      schema: "comfytrace.evidence_bundle.v1",
+      generatedBy: `${CASE_META.tool} ${CASE_META.version}`,
+      caseDump: {
+        filename: CASE_META.dumpName,
+        size: CASE_META.dumpSize,
+        sha256: CASE_META.dumpSha256,
+        mode: CASE_META.mode
+      },
+      finding: {
+        id: f.id,
+        tier: f.tier,
+        baseTier: f.baseTier,
+        tierLabel: f.tierLabel || TIERS[f.tier].short,
+        rationale: f.rationale,
+        job: f.job,
+        images: f.images,
+        workflow: f.workflow ? { ...f.workflow, apiGraph: buildApiWorkflowJson(f.workflow) } : null,
+        workflowGroup: (f.groupId && GROUPS[f.groupId]) || null,
+        replay: f.replay
+      }
+    };
+    downloadBlob(`${f.id}_evidence_bundle.json`, JSON.stringify(bundle, null, 2), "application/json");
+  }
+
+  /* Event Delegation */
+  tierStackEl.addEventListener("click", e => {
+    if (e.target.closest(".untiered-toggle")) {
+      state.showUntiered = !state.showUntiered;
+      if (!state.showUntiered && state.tierFilter === "UT") {
+        state.tierFilter = "ALL";
+      }
+      render();
+      showToast(state.showUntiered ? "Untiered findings included in the list" : "Untiered findings hidden");
+      return;
+    }
+    const btn = e.target.closest(".tier-filter");
+    if (!btn) return;
+    setTierFilter(btn.dataset.tier);
+  });
+
+  searchInputEl.addEventListener("input", () => {
+    state.search = searchInputEl.value;
+    render();
+  });
+
+  searchClearEl.addEventListener("click", () => {
+    state.search = "";
+    searchInputEl.value = "";
+    render();
+    searchInputEl.focus();
+  });
+
+  findingListEl.addEventListener("click", e => {
+    const row = e.target.closest(".finding-row");
+    if (!row) return;
+    selectFinding(row.dataset.id);
+  });
+
+  function selectNode(id, refocus) {
+    state.selectedNodeId = id;
+    render();
+    if (refocus) {
+      const again = Array.from(centreInnerEl.querySelectorAll(".wf-node")).find(n => n.dataset.node === id);
+      if (again) again.focus();
+    }
+  }
+
+  centreInnerEl.addEventListener("click", e => {
+    const prevBtn = e.target.closest("#prevFindingBtn");
+    if (prevBtn) { stepFinding(-1); return; }
+
+    const nextBtn = e.target.closest("#nextFindingBtn");
+    if (nextBtn) { stepFinding(1); return; }
+
+    const jump = e.target.closest("[data-select]");
+    if (jump) { jumpTo(jump.dataset.select); return; }
+
+    const copyCard = e.target.closest(".copy-card");
+    if (copyCard) {
+      state.selectedCopyIdx = Number(copyCard.dataset.copyIdx);
+      render();
+      return;
+    }
+
+    const wfNode = e.target.closest(".wf-node");
+    if (wfNode) { selectNode(wfNode.dataset.node, false); return; }
+
+    const wfCopy = e.target.closest(".wf-copy-pill");
+    if (wfCopy) {
+      const idx = Number(wfCopy.dataset.wfcopy);
+      state.selectedWfCopyIdx = state.selectedWfCopyIdx === idx ? null : idx;
+      render();
+      return;
+    }
+
+    if (e.target.closest("[data-wfcopies-toggle]")) {
+      state.showAllWfCopies = !state.showAllWfCopies;
+      if (!state.showAllWfCopies && state.selectedWfCopyIdx !== null && state.selectedWfCopyIdx >= WF_COPIES_SHOWN) {
+        state.selectedWfCopyIdx = null;
+      }
+      render();
+      return;
+    }
+
+    const copyBtn = e.target.closest(".copy-btn");
+    if (copyBtn) {
+      copyText(copyBtn.dataset.copy, copyBtn);
+      return;
+    }
+
+    if (e.target.closest("#inlineExpImgBtn")) { exportCurrentImage(); return; }
+    if (e.target.closest("#inlineExpWfBtn")) { exportCurrentWorkflow(); return; }
+  });
+
+  /* Keyboard: Enter or Space on a focused graph node inspects it, as a click does. */
+  centreInnerEl.addEventListener("keydown", e => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const wfNode = e.target.closest && e.target.closest(".wf-node");
+    if (!wfNode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selectNode(wfNode.dataset.node, true);
+  });
+
+  provContainerEl.addEventListener("click", e => {
+    const copyBtn = e.target.closest(".copy-btn");
+    if (copyBtn) copyText(copyBtn.dataset.copy, copyBtn);
+  });
+
+  /* Export Dropdown */
+  exportToggleEl.addEventListener("click", e => {
+    e.stopPropagation();
+    const isOpen = exportMenuEl.classList.toggle("open");
+    exportToggleEl.setAttribute("aria-expanded", String(isOpen));
+  });
+
+  /* Keyboard shortcuts popover */
+  function toggleKbd(open) {
+    const isOpen = open ?? !kbdPopEl.classList.contains("open");
+    kbdPopEl.classList.toggle("open", isOpen);
+    kbdBtnEl.setAttribute("aria-expanded", String(isOpen));
+  }
+  kbdBtnEl.addEventListener("click", e => { e.stopPropagation(); toggleKbd(); });
+
+  document.addEventListener("click", e => {
+    if (!e.target.closest("#exportDropdown")) {
+      exportMenuEl.classList.remove("open");
+      exportToggleEl.setAttribute("aria-expanded", "false");
+    }
+    if (!e.target.closest("#kbdWrap")) toggleKbd(false);
+  });
+
+  expImageEl.addEventListener("click", () => { exportMenuEl.classList.remove("open"); exportCurrentImage(); });
+  expWorkflowEl.addEventListener("click", () => { exportMenuEl.classList.remove("open"); exportCurrentWorkflow(); });
+  expBundleEl.addEventListener("click", () => { exportMenuEl.classList.remove("open"); exportCurrentBundle(); });
+  expPrintEl.addEventListener("click", () => { exportMenuEl.classList.remove("open"); window.print(); });
+
+  /* Theme Cycle (Auto -> Light -> Dark) */
+  themeBtnEl.addEventListener("click", () => {
+    const order = ["auto", "light", "dark"];
+    state.theme = order[(order.indexOf(state.theme) + 1) % order.length];
+    if (state.theme === "auto") {
+      document.documentElement.removeAttribute("data-theme");
+      themeBtnEl.textContent = "Theme: Auto";
+    } else {
+      document.documentElement.setAttribute("data-theme", state.theme);
+      themeBtnEl.textContent = "Theme: " + (state.theme === "light" ? "Light" : "Dark");
+    }
+  });
+
+  /* Keyboard Navigation: ↑/↓ findings, 1-6 tiers, / search, ? shortcuts, Esc clear */
+  document.addEventListener("keydown", e => {
+    const inInput = document.activeElement === searchInputEl;
+    if (e.key === "Escape") {
+      exportMenuEl.classList.remove("open");
+      if (kbdPopEl.classList.contains("open")) { toggleKbd(false); return; }
+      if (inInput) {
+        if (state.search) {
+          state.search = "";
+          searchInputEl.value = "";
+          render();
+        }
+        searchInputEl.blur();
+      } else if (state.tierFilter !== "ALL") {
+        setTierFilter("ALL");
+      }
+      return;
+    }
+
+    if (inInput) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (e.key === "ArrowDown" || e.key === "j") {
+      e.preventDefault();
+      stepFinding(1);
+    } else if (e.key === "ArrowUp" || e.key === "k") {
+      e.preventDefault();
+      stepFinding(-1);
+    } else if (e.key >= "1" && e.key <= "6") {
+      e.preventDefault();
+      setTierFilter("E" + e.key);
+    } else if (e.key === "0") {
+      e.preventDefault();
+      setTierFilter("ALL");
+    } else if (e.key === "/") {
+      e.preventDefault();
+      searchInputEl.focus();
+      searchInputEl.select();
+    } else if (e.key === "?") {
+      e.preventDefault();
+      toggleKbd();
+    }
+  });
+
+  /* Initial Render */
+  document.getElementById("ctVersion").textContent = CASE_META.version;
+  const dumpEl = document.getElementById("ctDump");
+  dumpEl.textContent = CASE_META.dumpName;
+  dumpEl.title = `RAM dump image · SHA-256 ${CASE_META.dumpSha256 || "not recorded"}`;
+  document.getElementById("ctDumpSub").innerHTML = `${esc(CASE_META.dumpSize)} <span class="mode-badge ${CASE_META.mode === "PHYSICAL_FALLBACK" ? "degraded" : ""}" title="${esc(CASE_META.mode)}">${esc(human(HUMAN_MODE, CASE_META.mode))}</span>`;
+  /* Findings, workflow graphs and artifacts are separate counts: several findings can share one graph. */
+  if (COUNTS) {
+    document.getElementById("ctInventorySummary").textContent =
+      `Case inventory · ${COUNTS.workflow_graphs} distinct workflow graph${COUNTS.workflow_graphs === 1 ? "" : "s"}`;
+    document.getElementById("ctCounts").innerHTML = [
+      `E1–E3: ${COUNTS.linked_findings} finding(s) · ${COUNTS.linked_workflow_graphs} distinct workflow graph(s) · ${COUNTS.linked_image_artifacts} image artifact(s)`,
+      `E4–E6: ${COUNTS.prompt_only_findings} finding(s) · ${COUNTS.workflow_graphs} distinct workflow graph(s) across all tiers`,
+      `Untiered: ${COUNTS.untiered_findings} finding(s) · Other images: ${COUNTS.other_images_artifacts.toLocaleString()} artifact(s) in ${COUNTS.other_images_findings} bucket finding(s)`
+    ].map(line => `<div>${esc(line)}</div>`).join("");
+    document.getElementById("ctInventory").hidden = false;
+  }
+  render();
+})();
+</script>
+</body>
+</html>

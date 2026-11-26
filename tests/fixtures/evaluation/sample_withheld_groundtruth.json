@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "case_id": "synthetic-example-case",
+  "dump_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "note": "Example withheld ground-truth specification for the post-extraction scorer (python -m tests.evaluation.scorer). Supply ONLY to the scorer after extraction completes; never pass ground truth into comfytrace extract.",
+  "jobs": [
+    {
+      "job_id": "job-01",
+      "prompt_id": "d6c4a8f1-34e2-4f32-b7d1-08f23491ba02",
+      "canonical_prompt_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "expected_tier": "E2",
+      "outputs": [
+        {
+          "output_id": "job-01:out-0",
+          "output_node_id": "9",
+          "batch_index": 0,
+          "filename": "ComfyUI_00001_.png",
+          "container_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "pixel_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "raster_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "raw_sha256s": [],
+          "physical_offsets": [],
+          "expected_tier": "E2",
+          "max_allowed_tier": "E2"
+        }
+      ]
+    },
+    {
+      "job_id": "job-02-close-match",
+      "prompt_id": "7b2e0c12-1111-4444-8888-aaaaaaaaaaaa",
+      "canonical_prompt_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "outputs": [
+        {
+          "output_id": "job-02:out-0",
+          "raw_sha256s": [
+            "5555555555555555555555555555555555555555555555555555555555555555"
+          ],
+          "expected_tier": "E3",
+          "max_allowed_tier": "E3"
+        }
+      ]
+    }
+  ],
+  "distractors": [
+    {
+      "distractor_id": "tiny-1x1-test-png",
+      "reason": "1x1 placeholder PNG carrying prompt text; must stay UNTIERED",
+      "container_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+      "allow_link_without_tier": true,
+      "max_allowed_tier": "UNTIERED"
+    },
+    {
+      "distractor_id": "browser-icon-png",
+      "reason": "Non-ComfyUI icon; must remain unassociated and UNTIERED",
+      "container_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "allow_link_without_tier": false,
+      "max_allowed_tier": "UNTIERED"
+    }
+  ]
+}

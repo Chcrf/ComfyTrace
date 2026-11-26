@@ -1,0 +1,44 @@
+{
+  "artifact_id": "CARVE-PNG-ORPHAN-004",
+  "completeness": "PARTIAL",
+  "link_status": "AMBIGUOUS",
+  "associated_workflow_id": null,
+  "ambiguous_candidate_workflows": [
+    "WF-001",
+    "WF-002"
+  ],
+  "is_derived": false,
+  "carve_type": "PARTIAL_PNG",
+  "source_layer": "physical_unallocated",
+  "process_id": null,
+  "virtual_address": null,
+  "physical_offsets": [
+    "0x0000000104A12000"
+  ],
+  "recovered_bytes": 2097152,
+  "container_sha256": null,
+  "pixel_sha256": null,
+  "pixel_metadata": null,
+  "validation": {
+    "crc32_valid": true,
+    "scanlines_valid": false,
+    "has_gaps": true
+  },
+  "gaps": [
+    {
+      "relative_offset": 2097152,
+      "length_bytes": 4096,
+      "reason": "NONCONTIGUOUS_PHYSICAL",
+      "synthetic_padding_applied": false
+    }
+  ],
+  "raw_file_paths": [
+    "exports/raw/CARVE-PNG-ORPHAN-004/span_000.bin"
+  ],
+  "derived_preview_path": "exports/derived/DERIVED_preview_CARVE-PNG-ORPHAN-004.png",
+  "derived_preview_metadata": {
+    "decoded_rows": 512,
+    "total_rows": 1024,
+    "scanline_halt_reason": "PAGE_GAP_ENCOUNTERED"
+  }
+}

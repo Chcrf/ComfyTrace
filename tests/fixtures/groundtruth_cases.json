@@ -1,0 +1,36 @@
+{
+  "description": "Lab ground-truth memory acquisitions live outside the repository. Each case is referenced by registered SHA-256 and portable filename/symbol configuration; tests skip when the dump or required kernel symbols are absent locally. Configure local paths on Windows or Linux via COMFYTRACE_EVAL_DUMPS_DIR, COMFYTRACE_EVAL_SYMBOLS_DIR, optional COMFYTRACE_EVAL_GROUNDTRUTH_DIR (supplied only to the post-extraction scorer after extraction), per-case COMFYTRACE_EVAL_MEMORY_<CASE_ID> / COMFYTRACE_EVAL_SYMBOLS_<CASE_ID> / COMFYTRACE_EVAL_GROUNDTRUTH_<CASE_ID>, or a JSON file pointed to by COMFYTRACE_EVAL_CONFIG.",
+  "env": {
+    "cases_file": "COMFYTRACE_EVAL_CASES_FILE",
+    "config_file": "COMFYTRACE_EVAL_CONFIG",
+    "dumps_dir": "COMFYTRACE_EVAL_DUMPS_DIR",
+    "symbols_dir": "COMFYTRACE_EVAL_SYMBOLS_DIR",
+    "groundtruth_dir": "COMFYTRACE_EVAL_GROUNDTRUTH_DIR"
+  },
+  "cases": [
+    {
+      "id": "gen-only-run-1",
+      "memory_filename": "gen_only_run_1.raw",
+      "memory": "/home/ict3215/Desktop/project/gen_only_run_1.raw",
+      "sha256": "83b7c875b39e4998d105bc21b8fa7594076c0709d43731ce9bc6dd1fba92139a",
+      "symbols_dir": "/home/ict3215/Desktop/project/development-workspace/verification/symbols",
+      "symbols_subdir": null,
+      "requires_symbols": true,
+      "kernel_pdb": {
+        "name": "ntkrnlmp.pdb",
+        "guid_age": "B661C6FE72991D160FE37C48B8BC5470/1"
+      },
+      "groundtruth_filename": "gen-only-run-1.groundtruth.json",
+      "expected_exit_code": 2,
+      "expected_min_tiers": {
+        "E2": 4,
+        "E3": 7
+      },
+      "note": "ComfyUI Desktop, generation only (PreviewImage), Windows kernel ntkrnlmp.pdb B661C6FE72991D160FE37C48B8BC5470/1. ISF built locally with volatility3 pdbconv. Minimums from the host run at 5995112: 35 STRICT links, all partial images. Carve-type minimums from w5 (T98): one IMAGE tensor and seven decoded bitmaps; bitmaps vanish when the PFN database cannot be read. Since T112 findings are per job (all copies of one output with its workflow), so the 35 links of 5995112 fold into E3 job findings; from w24: E2 4 (complete PNGs read in page order) and E3 10. Since the remaining-items work (2026-11-16): E3 7, because the three 1 x 1 PNGs that carry a prompt are untiered (below 16 pixels a side), and the job whose tensor ComfyUI's execution cache holds (616da9bf) keeps one E2 finding with the PNG and the tensor as copies of one output.",
+      "expected_min_carve_types": {
+        "TENSOR_IMAGE": 1,
+        "DECODED_BITMAP": 7
+      }
+    }
+  ]
+}
